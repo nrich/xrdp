@@ -139,6 +139,8 @@ lib_mod_connect(struct mod *mod)
     int use_uds;
     struct stream *s;
     char con_port[256];
+    int retry = 0;
+    int send_error = 0;
 
     LIB_DEBUG(mod, "in lib_mod_connect");
     /* clear screen */
@@ -176,6 +178,7 @@ lib_mod_connect(struct mod *mod)
     mod->sck_closed = 0;
     i = 0;
 
+RECONNECT:
     while (1)
     {
         if (use_uds)
@@ -298,7 +301,19 @@ lib_mod_connect(struct mod *mod)
         len = (int)(s->end - s->data);
         s_pop_layer(s, iso_hdr);
         out_uint32_le(s, len);
-        lib_send(mod, s->data, len);
+        send_error = lib_send(mod, s->data, len);
+    }
+
+    if (send_error) {
+        if (retry < 50) {
+            g_tcp_close(mod->sck);
+            mod->server_msg(mod, "Doing a retry", 0);
+            retry++;
+            g_sleep(1000);
+            goto RECONNECT;
+        }
+
+        error = send_error;
     }
 
     free_stream(s);
