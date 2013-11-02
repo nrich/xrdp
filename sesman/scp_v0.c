@@ -26,6 +26,13 @@
 
 #include "sesman.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
 extern struct config_sesman *g_cfg; /* in sesman.c */
 
 /******************************************************************************/
@@ -78,7 +85,23 @@ scp_v0_process(struct SCP_CONNECTION *c, struct SCP_SESSION *s)
 
         if (s_item != 0)
         {
+            struct sockaddr_un sa;
+
             display = s_item->display;
+
+            memset(&sa, 0, sizeof(sa));
+            sa.sun_family = AF_UNIX;
+            sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", display);
+            if (access(sa.sun_path, F_OK) == 0) 
+            {
+                int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
+                size_t len = sizeof(sa);
+                sendto(sck, "sig", 4, 0, (struct sockaddr*)&sa, len);
+            }
+            else
+            {
+                log_message(LOG_LEVEL_INFO, "Failed to send disconnect to %s", sa.sun_path);
+            }
 
             if (0 != s->client_ip)
             {

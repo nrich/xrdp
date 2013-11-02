@@ -24,6 +24,13 @@
  *
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
 #include "sesman.h"
 
 //#include "libscp_types.h"
@@ -162,7 +169,7 @@ scp_v1_process(struct SCP_CONNECTION *c, struct SCP_SESSION *s)
             case SCP_SERVER_STATE_SELECTION_CANCEL:
                 log_message( LOG_LEVEL_INFO, "Connection cancelled after session listing");
                 break;
-            case SCP_SERVER_STATE_OK:
+            case SCP_SERVER_STATE_OK: 
                 /* ok, reconnecting... */
                 sitem = session_get_bypid(sid);
 
@@ -173,8 +180,25 @@ scp_v1_process(struct SCP_CONNECTION *c, struct SCP_SESSION *s)
                 }
                 else
                 {
+                    struct sockaddr_un sa;
+
                     display = sitem->display;
                     /*e=scp_v1s_reconnect_session(c, sitem, display);*/
+
+                    memset(&sa, 0, sizeof(sa));
+                    sa.sun_family = AF_UNIX;
+                    sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", display);
+                    if (access(sa.sun_path, F_OK) == 0)
+                    {
+                        int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
+                        size_t len = sizeof(sa);
+                        sendto(sck, "sig", 4, 0, (struct sockaddr*)&sa, len);
+                    } 
+                    else
+                    {
+                        log_message(LOG_LEVEL_INFO, "Failed to send disconnect to %s", sa.sun_path);
+                    }
+
                     e = scp_v1s_reconnect_session(c, display);
 
                     if (0 != s->client_ip)
@@ -188,7 +212,6 @@ scp_v1_process(struct SCP_CONNECTION *c, struct SCP_SESSION *s)
 
                     g_free(sitem);
                 }
-
                 break;
             default:
                 /* we check the other errors */
