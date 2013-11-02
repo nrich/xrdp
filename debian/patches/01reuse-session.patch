@@ -1,0 +1,27 @@
+Allow to reuse an existing session by fixing a bug in session comparison.
+See http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=573258
+
+Index: xrdp/sesman/session.c
+===================================================================
+--- xrdp.orig/sesman/session.c	2012-09-29 12:51:50.115200445 +0200
++++ xrdp/sesman/session.c	2012-09-29 12:54:40.302890162 +0200
+@@ -56,6 +56,19 @@
+ {
+   struct session_chain* tmp;
+ 
++  /* convert from SCP_SESSION_TYPE namespace to SESMAN_SESSION_TYPE namespace */
++  switch (type)
++  {
++    case SCP_SESSION_TYPE_XVNC:
++      type = SESMAN_SESSION_TYPE_XVNC;
++      break;
++    case SCP_SESSION_TYPE_XRDP:
++      type = SESMAN_SESSION_TYPE_XRDP;
++      break;
++    default:
++      return 0;
++  }
++
+   /*THREAD-FIX require chain lock */
+   lock_chain_acquire();
+ 

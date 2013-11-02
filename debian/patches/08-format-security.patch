@@ -1,0 +1,22 @@
+Fix a potential security problem if the message log contained "%".
+
+diff --git a/common/log.c b/common/log.c
+index 7bbdfc0..4ed2adf 100644
+--- a/common/log.c
++++ b/common/log.c
+@@ -160,13 +160,13 @@ log_message(struct log_config* l_cfg, const unsigned int lvl, const char* msg, .
+   if (l_cfg->enable_syslog  && (lvl <= l_cfg->log_level))
+   {
+     /* log to syslog */
+-    syslog(log_xrdp2syslog(lvl), buff + 20);
++    syslog(log_xrdp2syslog(lvl), "%s", buff + 20);
+   }
+ 
+   if (lvl <= l_cfg->log_level)
+   {
+     /* log to console */
+-    g_printf((char*)buff);
++    g_printf("%s", (char*)buff);
+ 
+     /* log to application logfile */
+ #ifdef LOG_ENABLE_THREAD

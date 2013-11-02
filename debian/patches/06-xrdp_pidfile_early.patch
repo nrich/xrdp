@@ -1,0 +1,39 @@
+Ensure that the PID file is written before sleeping.
+
+Index: xrdp/xrdp/xrdp.c
+===================================================================
+--- xrdp.orig/xrdp/xrdp.c	2012-09-29 13:03:27.666630538 +0200
++++ xrdp/xrdp/xrdp.c	2012-09-29 13:03:32.874746622 +0200
+@@ -388,17 +388,6 @@
+       g_deinit();
+       g_exit(0);
+     }
+-    g_sleep(1000);
+-    g_file_close(0);
+-    g_file_close(1);
+-    g_file_close(2);
+-    g_file_open("/dev/null");
+-    g_file_open("/dev/null");
+-    g_file_open("/dev/null");
+-    /* end of daemonizing code */
+-  }
+-  if (!no_daemon)
+-  {
+     /* write the pid to file */
+     pid = g_getpid();
+     fd = g_file_open(pid_file); /* xrdp.pid */
+@@ -414,6 +403,14 @@
+       g_file_write(fd, text, g_strlen(text));
+       g_file_close(fd);
+     }
++    g_sleep(1000);
++    g_file_close(0);
++    g_file_close(1);
++    g_file_close(2);
++    g_file_open("/dev/null");
++    g_file_open("/dev/null");
++    g_file_open("/dev/null");
++    /* end of daemonizing code */
+   }
+   g_threadid = tc_get_threadid();
+   g_listen = xrdp_listen_create();

@@ -1,0 +1,5 @@
+01reuse-session.patch
+04quiet_start.patch
+05-default-keymap.patch
+06-xrdp_pidfile_early.patch
+08-format-security.patch
