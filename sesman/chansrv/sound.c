@@ -40,6 +40,8 @@ read_raw_audio_data(void *arg);
 
 #define CHANSRV_PORT_STR "/tmp/.xrdp/xrdp_chansrv_audio_socket_%d"
 
+#define HQ_AUDIO 0
+
 struct xr_wave_format_ex
 {
     int wFormatTag;
@@ -203,6 +205,7 @@ sound_process_format(int aindex, int wFormatTag, int nChannels,
     LOG(0, ("  wBitsPerSample %d", wBitsPerSample));
     LOG(0, ("  cbSize %d", cbSize));
     g_hexdump(data, cbSize);
+#if HQ_AUDIO
     if (wFormatTag == g_pmc_44100.wFormatTag &&
         nChannels == g_pmc_44100.nChannels &&
         nSamplesPerSec == g_pmc_44100.nSamplesPerSec &&
@@ -213,6 +216,19 @@ sound_process_format(int aindex, int wFormatTag, int nChannels,
         g_current_client_format_index = aindex;
         g_current_server_format_index = 0;
     }
+#else
+    if (wFormatTag == g_pmc_22050.wFormatTag &&
+        nChannels == g_pmc_22050.nChannels &&
+        nSamplesPerSec == g_pmc_22050.nSamplesPerSec &&
+        nAvgBytesPerSec == g_pmc_22050.nAvgBytesPerSec &&
+        nBlockAlign == g_pmc_22050.nBlockAlign &&
+        wBitsPerSample == g_pmc_22050.wBitsPerSample)
+    {
+        g_current_client_format_index = aindex;
+        g_current_server_format_index = 0;
+    }
+#endif
+
 #if 0
     for (lindex = 0; lindex < NUM_BUILT_IN; lindex++)
     {
@@ -715,8 +731,14 @@ read_raw_audio_data(void *arg)
 
     /* setup audio format */
     samp_spec.format = PA_SAMPLE_S16LE;
+
+#if HQ_AUDIO
     samp_spec.rate = 44100;
     samp_spec.channels = 2;
+#else
+    samp_spec.rate = 22050;
+    samp_spec.channels = 2;
+#endif
 
     /* if we are root, then for first 8 seconds connection to pulseaudo server
        fails; if we are non-root, then connection succeeds on first attempt;
