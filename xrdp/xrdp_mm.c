@@ -229,6 +229,7 @@ xrdp_mm_send_login(struct xrdp_mm *self)
 
     if (rv != 0)
     {
+        self->wm->hide_log_window = 0;
         xrdp_wm_log_msg(self->wm, "xrdp_mm_send_login: xrdp_mm_send_login failed");
     }
 
@@ -903,6 +904,8 @@ xrdp_mm_process_login_response(struct xrdp_mm *self, struct stream *s)
     }
     else
     {
+        self->wm->hide_log_window = 0;
+
         xrdp_wm_log_msg(self->wm, "xrdp_mm_process_login_response: "
                         "login failed");
         log_message(LOG_LEVEL_INFO,"xrdp_mm_process_login_response: "
