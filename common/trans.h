@@ -38,6 +38,7 @@ struct trans; /* forward declaration */
 
 typedef int (*ttrans_data_in)(struct trans* self);
 typedef int (*ttrans_conn_in)(struct trans* self, struct trans* new_self);
+typedef int (*tis_term)(void);
 
 struct trans
 {
@@ -52,6 +53,12 @@ struct trans
   struct stream* in_s;
   struct stream* out_s;
   char* listen_filename;
+  tis_term is_term; /* used to test for exit */
+  struct stream* wait_s;
+  char addr[256];
+  char port[256];
+  int no_stream_init_on_data_in;
+  int extra_flags; /* user defined */
 };
 
 struct trans* APP_CC
@@ -60,6 +67,10 @@ void APP_CC
 trans_delete(struct trans* self);
 int APP_CC
 trans_get_wait_objs(struct trans* self, tbus* objs, int* count);
+int APP_CC
+trans_get_wait_objs_rw(struct trans *self,
+                       tbus *robjs, int *rcount,
+                       tbus *wobjs, int *wcount);
 int APP_CC
 trans_check_wait_objs(struct trans* self);
 int APP_CC
@@ -70,6 +81,8 @@ int APP_CC
 trans_force_read(struct trans* self, int size);
 int APP_CC
 trans_force_write(struct trans* self);
+int APP_CC
+trans_write_copy(struct trans* self);
 int APP_CC
 trans_connect(struct trans* self, const char* server, const char* port,
               int timeout);

@@ -21,6 +21,18 @@
 #include "xrdp.h"
 #include "log.h"
 
+#define LLOG_LEVEL 1
+#define LLOGLN(_level, _args) \
+  do \
+  { \
+    if (_level < LLOG_LEVEL) \
+    { \
+        g_write("xrdp:xrdp_cache [%10.10u]: ", g_time3()); \
+        g_writeln _args ; \
+    } \
+  } \
+  while (0)
+
 /*****************************************************************************/
 struct xrdp_cache *APP_CC
 xrdp_cache_create(struct xrdp_wm *owner,
@@ -33,16 +45,28 @@ xrdp_cache_create(struct xrdp_wm *owner,
     self->wm = owner;
     self->session = session;
     self->use_bitmap_comp = client_info->use_bitmap_comp;
-    self->cache1_entries = client_info->cache1_entries;
+
+    self->cache1_entries = MIN(XRDP_MAX_BITMAP_CACHE_IDX,
+                               client_info->cache1_entries);
+    self->cache1_entries = MAX(self->cache1_entries, 0);
     self->cache1_size = client_info->cache1_size;
-    self->cache2_entries = client_info->cache2_entries;
+
+    self->cache2_entries = MIN(XRDP_MAX_BITMAP_CACHE_IDX,
+                               client_info->cache2_entries);
+    self->cache2_entries = MAX(self->cache2_entries, 0);
     self->cache2_size = client_info->cache2_size;
-    self->cache3_entries = client_info->cache3_entries;
+
+    self->cache3_entries = MIN(XRDP_MAX_BITMAP_CACHE_IDX,
+                               client_info->cache3_entries);
+    self->cache3_entries = MAX(self->cache3_entries, 0);
     self->cache3_size = client_info->cache3_size;
+
     self->bitmap_cache_persist_enable = client_info->bitmap_cache_persist_enable;
     self->bitmap_cache_version = client_info->bitmap_cache_version;
     self->pointer_cache_entries = client_info->pointer_cache_entries;
     self->xrdp_os_del_list = list_create();
+    LLOGLN(10, ("xrdp_cache_create: 0 %d 1 %d 2 %d",
+                self->cache1_entries, self->cache2_entries, self->cache3_entries));
     return self;
 }
 
@@ -59,9 +83,9 @@ xrdp_cache_delete(struct xrdp_cache *self)
     }
 
     /* free all the cached bitmaps */
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < XRDP_MAX_BITMAP_CACHE_ID; i++)
     {
-        for (j = 0; j < 2000; j++)
+        for (j = 0; j < XRDP_MAX_BITMAP_CACHE_IDX; j++)
         {
             xrdp_bitmap_delete(self->bitmap_items[i][j].bitmap);
         }
@@ -98,9 +122,9 @@ xrdp_cache_reset(struct xrdp_cache *self,
     int j;
 
     /* free all the cached bitmaps */
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < XRDP_MAX_BITMAP_CACHE_ID; i++)
     {
-        for (j = 0; j < 2000; j++)
+        for (j = 0; j < XRDP_MAX_BITMAP_CACHE_IDX; j++)
         {
             xrdp_bitmap_delete(self->bitmap_items[i][j].bitmap);
         }
@@ -136,6 +160,11 @@ xrdp_cache_reset(struct xrdp_cache *self,
     return 0;
 }
 
+#define COMPARE_WITH_CRC(_b1, _b2) \
+ ((_b1 != 0) && (_b2 != 0) && (_b1->crc == _b2->crc) && \
+  (_b1->bpp == _b2->bpp) && \
+  (_b1->width == _b2->width) && (_b1->height == _b2->height))
+
 /*****************************************************************************/
 /* returns cache id */
 int APP_CC
@@ -170,14 +199,13 @@ xrdp_cache_add_bitmap(struct xrdp_cache *self, struct xrdp_bitmap *bitmap,
         for (j = 0; j < self->cache1_entries; j++)
         {
 #ifdef USE_CRC
-
-            if (xrdp_bitmap_compare_with_crc(self->bitmap_items[i][j].bitmap, bitmap))
+            if (COMPARE_WITH_CRC(self->bitmap_items[i][j].bitmap, bitmap))
 #else
             if (xrdp_bitmap_compare(self->bitmap_items[i][j].bitmap, bitmap))
 #endif
             {
                 self->bitmap_items[i][j].stamp = self->bitmap_stamp;
-                DEBUG(("found bitmap at %d %d", i, j));
+                LLOGLN(10, ("found bitmap at %d %d", i, j));
                 xrdp_bitmap_delete(bitmap);
                 return MAKELONG(j, i);
             }
@@ -190,14 +218,13 @@ xrdp_cache_add_bitmap(struct xrdp_cache *self, struct xrdp_bitmap *bitmap,
         for (j = 0; j < self->cache2_entries; j++)
         {
 #ifdef USE_CRC
-
-            if (xrdp_bitmap_compare_with_crc(self->bitmap_items[i][j].bitmap, bitmap))
+            if (COMPARE_WITH_CRC(self->bitmap_items[i][j].bitmap, bitmap))
 #else
             if (xrdp_bitmap_compare(self->bitmap_items[i][j].bitmap, bitmap))
 #endif
             {
                 self->bitmap_items[i][j].stamp = self->bitmap_stamp;
-                DEBUG(("found bitmap at %d %d", i, j));
+                LLOGLN(10, ("found bitmap at %d %d", i, j));
                 xrdp_bitmap_delete(bitmap);
                 return MAKELONG(j, i);
             }
@@ -210,14 +237,13 @@ xrdp_cache_add_bitmap(struct xrdp_cache *self, struct xrdp_bitmap *bitmap,
         for (j = 0; j < self->cache3_entries; j++)
         {
 #ifdef USE_CRC
-
-            if (xrdp_bitmap_compare_with_crc(self->bitmap_items[i][j].bitmap, bitmap))
+            if (COMPARE_WITH_CRC(self->bitmap_items[i][j].bitmap, bitmap))
 #else
             if (xrdp_bitmap_compare(self->bitmap_items[i][j].bitmap, bitmap))
 #endif
             {
                 self->bitmap_items[i][j].stamp = self->bitmap_stamp;
-                DEBUG(("found bitmap at %d %d", i, j));
+                LLOGLN(10, ("found bitmap at %d %d", i, j));
                 xrdp_bitmap_delete(bitmap);
                 return MAKELONG(j, i);
             }
@@ -225,7 +251,7 @@ xrdp_cache_add_bitmap(struct xrdp_cache *self, struct xrdp_bitmap *bitmap,
     }
     else
     {
-        log_message(LOG_LEVEL_ERROR,"error in xrdp_cache_add_bitmap, too big(%d)", bmp_size);
+        log_message(LOG_LEVEL_ERROR,"error in xrdp_cache_add_bitmap, too big(%d) bpp %d", bmp_size, bitmap->bpp);
     }
 
     /* look for oldest */
@@ -276,7 +302,8 @@ xrdp_cache_add_bitmap(struct xrdp_cache *self, struct xrdp_bitmap *bitmap,
         }
     }
 
-    DEBUG(("adding bitmap at %d %d", cache_id, cache_idx));
+    LLOGLN(10, ("adding bitmap at %d %d ptr %p", cache_id, cache_idx,
+                self->bitmap_items[cache_id][cache_idx].bitmap));
     /* set, send bitmap and return */
     xrdp_bitmap_delete(self->bitmap_items[cache_id][cache_idx].bitmap);
     self->bitmap_items[cache_id][cache_idx].bitmap = bitmap;

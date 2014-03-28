@@ -156,6 +156,13 @@ rdpRRScreenSetSize(ScreenPtr pScreen, CARD16 width, CARD16 height,
         ErrorF("  resizing screenPixmap [%p] to %dx%d, currently at %dx%d\n",
                (void *)screenPixmap, width, height,
                screenPixmap->drawable.width, screenPixmap->drawable.height);
+        if (g_rdpScreen.sizeInBytes > g_rdpScreen.sizeInBytesAlloc)
+        {
+            g_free(g_rdpScreen.pfbMemory);
+            g_rdpScreen.pfbMemory = (char*)g_malloc(g_rdpScreen.sizeInBytes, 1);
+            g_rdpScreen.sizeInBytesAlloc = g_rdpScreen.sizeInBytes;
+            ErrorF("new buffer size %d\n", g_rdpScreen.sizeInBytes);
+        }
         pScreen->ModifyPixmapHeader(screenPixmap, width, height,
                                     g_rdpScreen.depth, g_rdpScreen.bitsPerPixel,
                                     g_rdpScreen.paddedWidthInBytes,
@@ -177,6 +184,7 @@ rdpRRScreenSetSize(ScreenPtr pScreen, CARD16 width, CARD16 height,
     pScreen->root->drawable.height = height;
     ResizeChildrenWinSize(pScreen->root, 0, 0, 0, 0);
     RRGetInfo(pScreen, 1);
+    RRScreenSizeNotify(pScreen);
     rdpInvalidateArea(g_pScreen, 0, 0, g_rdpScreen.width, g_rdpScreen.height);
     ErrorF("  screen resized to %dx%d\n",
            pScreen->width, pScreen->height);
@@ -236,7 +244,7 @@ rdpRRModeDestroy(ScreenPtr pScreen, RRModePtr mode)
 
 /******************************************************************************/
 Bool
-rdpRROutputGetProperty(ScreenPtr   pScreen, RROutputPtr output, Atom property)
+rdpRROutputGetProperty(ScreenPtr pScreen, RROutputPtr output, Atom property)
 {
     ErrorF("rdpRROutputGetProperty:\n");
     return TRUE;

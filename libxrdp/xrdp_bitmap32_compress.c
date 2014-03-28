@@ -1,8 +1,7 @@
 /**
- * FreeRDP: A Remote Desktop Protocol Server
- * freerdp wrapper
+ * xrdp: A Remote Desktop Protocol server.
  *
- * Copyright 2011-2012 Jay Sorg
+ * Copyright (C) Jay Sorg 2014
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,15 +14,19 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * planar bitmap compressor
+ * 32 bpp compression
  */
 
-#ifndef __XRDP_COLOR_H
-#define __XRDP_COLOR_H
+#include "libxrdp.h"
 
-char* APP_CC
-convert_bitmap(int in_bpp, int out_bpp, char* bmpdata,
-               int width, int height, int* palette);
+/*****************************************************************************/
 int APP_CC
-convert_color(int in_bpp, int out_bpp, int in_color, int* palette);
-
-#endif
+xrdp_bitmap32_compress(char *in_data, int width, int height,
+                       struct stream *s, int bpp, int byte_limit,
+                       int start_line, struct stream *temp_s,
+                       int e)
+{
+    return 0;
+}

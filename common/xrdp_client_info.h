@@ -21,6 +21,15 @@
 #if !defined(XRDP_CLIENT_INFO_H)
 #define XRDP_CLIENT_INFO_H
 
+struct monitor_info
+{
+  int left;
+  int top;
+  int right;
+  int bottom;
+  int is_primary;
+};
+
 struct xrdp_client_info
 {
   int size; /* bytes for this structure */
@@ -69,6 +78,7 @@ struct xrdp_client_info
   int offscreen_cache_size;
   int offscreen_cache_entries;
   int rfx;
+
   /* CAPSETTYPE_RAIL */
   int rail_support_level;
   /* CAPSETTYPE_WINDOW */
@@ -93,6 +103,24 @@ struct xrdp_client_info
   int pointer_flags; /* 0 color, 1 new, 2 no new */
   int use_fast_path;
   int require_credentials; /* when true, credentials *must* be passed on cmd line */
+  char client_addr[256];
+  char client_port[256];
+
+  int nego_sec_layer; /* 0, 1, 2 = RDP security layer, TLS , Negotiate */
+  int multimon; /* 0 = deny , 1 = allow */
+  int monitorCount; /* number of monitors detected (max = 16) */
+  struct monitor_info minfo[16]; /* client monitor data */
+
+  int keyboard_type;
+  int keyboard_subtype;
+  
+  int png_codec_id;
+  int png_prop_len;
+  char png_prop[64];
+  int vendor_flags[4];
+  int mcs_connection_type;
+  int mcs_early_capability_flags;
+
 };
 
 #endif

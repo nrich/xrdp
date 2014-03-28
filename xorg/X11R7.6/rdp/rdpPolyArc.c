@@ -125,7 +125,7 @@ rdpPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc *parcs)
 
             if (g_do_dirty_os)
             {
-                LLOGLN(10, ("rdpPolyArc: gettig dirty"));
+                LLOGLN(10, ("rdpPolyArc: getting dirty"));
                 pDstPriv->is_dirty = 1;
                 pDirtyPriv = pDstPriv;
                 dirty_type = RDI_IMGLL;
@@ -151,7 +151,7 @@ rdpPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc *parcs)
 
                 if (g_do_dirty_ons)
                 {
-                    LLOGLN(0, ("rdpPolyArc: gettig dirty"));
+                    LLOGLN(10, ("rdpPolyArc: getting dirty"));
                     g_screenPriv.is_dirty = 1;
                     pDirtyPriv = &g_screenPriv;
                     dirty_type = RDI_IMGLL;
@@ -185,7 +185,7 @@ rdpPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc *parcs)
             {
                 if (dirty_type != 0)
                 {
-                    draw_item_add_img_region(pDirtyPriv, tmpRegion, GXcopy, dirty_type, 6);
+                    draw_item_add_img_region(pDirtyPriv, tmpRegion, GXcopy, dirty_type, TAG_POLYARC);
                 }
                 else if (got_id)
                 {
@@ -217,7 +217,7 @@ rdpPolyArc(DrawablePtr pDrawable, GCPtr pGC, int narcs, xArc *parcs)
             {
                 if (dirty_type != 0)
                 {
-                    draw_item_add_img_region(pDirtyPriv, tmpRegion, GXcopy, dirty_type, 6);
+                    draw_item_add_img_region(pDirtyPriv, tmpRegion, GXcopy, dirty_type, TAG_POLYARC);
                 }
                 else if (got_id)
                 {

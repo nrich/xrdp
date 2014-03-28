@@ -11,14 +11,21 @@ else
 EXTRA_DEFINES += -DXRDP_NODEBUG
 endif
 
-if XRDP_FREERDP1
-EXTRA_DEFINES += -DXRDP_FREERDP1
+if XRDP_NEUTRINORDP
+EXTRA_DEFINES += -DXRDP_NEUTRINORDP
 EXTRA_LIBS += $(FREERDP_LIBS)
 endif
 
+if XRDP_TJPEG
+EXTRA_DEFINES += -DXRDP_JPEG -DXRDP_TJPEG
+EXTRA_INCLUDES += -I/opt/libjpeg-turbo/include
+EXTRA_FLAGS += -L/opt/libjpeg-turbo/lib -Wl,-rpath -Wl,/opt/libjpeg-turbo/lib
+EXTRA_LIBS += -lturbojpeg
+else
 if XRDP_JPEG
 EXTRA_DEFINES += -DXRDP_JPEG
 EXTRA_LIBS += -ljpeg
+endif
 endif
 
 if GOT_PREFIX
@@ -48,8 +55,8 @@ libxrdp_la_SOURCES = \
   xrdp_orders.c \
   xrdp_rdp.c \
   xrdp_sec.c \
-  xrdp_tcp.c \
   xrdp_bitmap_compress.c \
+  xrdp_bitmap32_compress.c \
   xrdp_jpeg_compress.c \
   xrdp_orders_rail.c \
   xrdp_mppc_enc.c

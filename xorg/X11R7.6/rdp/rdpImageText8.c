@@ -106,7 +106,7 @@ rdpImageText8(DrawablePtr pDrawable, GCPtr pGC,
 
             if (g_do_dirty_os)
             {
-                LLOGLN(10, ("rdpImageText8: gettig dirty"));
+                LLOGLN(10, ("rdpImageText8: getting dirty"));
                 pDstPriv->is_dirty = 1;
                 pDirtyPriv = pDstPriv;
                 dirty_type = RDI_IMGLL;
@@ -132,7 +132,7 @@ rdpImageText8(DrawablePtr pDrawable, GCPtr pGC,
 
                 if (g_do_dirty_ons)
                 {
-                    LLOGLN(0, ("rdpImageText8: gettig dirty"));
+                    LLOGLN(10, ("rdpImageText8: getting dirty"));
                     g_screenPriv.is_dirty = 1;
                     pDirtyPriv = &g_screenPriv;
                     dirty_type = RDI_IMGLL;
@@ -167,7 +167,7 @@ rdpImageText8(DrawablePtr pDrawable, GCPtr pGC,
         if (dirty_type != 0)
         {
             RegionInit(&reg1, &box, 0);
-            draw_item_add_img_region(pDirtyPriv, &reg1, GXcopy, dirty_type, 9);
+            draw_item_add_img_region(pDirtyPriv, &reg1, GXcopy, dirty_type, TAG_IMAGETEXT8);
             RegionUninit(&reg1);
         }
         else if (got_id)
@@ -187,7 +187,7 @@ rdpImageText8(DrawablePtr pDrawable, GCPtr pGC,
         {
             if (dirty_type != 0)
             {
-                draw_item_add_img_region(pDirtyPriv, &reg, GXcopy, dirty_type, 9);
+                draw_item_add_img_region(pDirtyPriv, &reg, GXcopy, dirty_type, TAG_IMAGETEXT8);
             }
             else if (got_id)
             {

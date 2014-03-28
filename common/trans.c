@@ -92,6 +92,86 @@ trans_get_wait_objs(struct trans *self, tbus *objs, int *count)
 
 /*****************************************************************************/
 int APP_CC
+trans_get_wait_objs_rw(struct trans *self,
+                       tbus *robjs, int *rcount,
+                       tbus *wobjs, int *wcount)
+{
+    if (self == 0)
+    {
+        return 1;
+    }
+
+    if (self->status != TRANS_STATUS_UP)
+    {
+        return 1;
+    }
+
+    robjs[*rcount] = self->sck;
+    (*rcount)++;
+
+    if (self->wait_s != 0)
+    {
+        wobjs[*wcount] = self->sck;
+        (*wcount)++;
+    }
+
+    return 0;
+}
+
+/*****************************************************************************/
+int APP_CC
+send_waiting(struct trans *self, int block)
+{
+    struct stream *temp_s;
+    int bytes;
+    int sent;
+    int timeout;
+    int cont;
+
+    timeout = block ? 100 : 0;
+    cont = 1;
+    while (cont)
+    {
+        if (self->wait_s != 0)
+        {
+            temp_s = self->wait_s;
+            if (g_tcp_can_send(self->sck, timeout))
+            {
+                bytes = (int) (temp_s->end - temp_s->p);
+                sent = g_tcp_send(self->sck, temp_s->p, bytes, 0);
+                if (sent > 0)
+                {
+                    temp_s->p += sent;
+                    if (temp_s->p >= temp_s->end)
+                    {
+                        self->wait_s = (struct stream *) (temp_s->next_packet);
+                        free_stream(temp_s);
+                    }
+                }
+                else if (sent == 0)
+                {
+                    return 1;
+                }
+                else
+                {
+                    if (!g_tcp_last_error_would_block(self->sck))
+                    {
+                        return 1;
+                    }
+                }
+            }
+        }
+        else
+        {
+            break;
+        }
+        cont = block;
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+int APP_CC
 trans_check_wait_objs(struct trans *self)
 {
     tbus in_sck = (tbus)0;
@@ -117,7 +197,8 @@ trans_check_wait_objs(struct trans *self)
     {
         if (g_tcp_can_recv(self->sck, 0))
         {
-            in_sck = g_tcp_accept(self->sck);
+            in_sck = g_sck_accept(self->sck, self->addr, sizeof(self->addr),
+                                  self->port, sizeof(self->port));
 
             if (in_sck == -1)
             {
@@ -142,6 +223,9 @@ trans_check_wait_objs(struct trans *self)
                     in_trans->sck = in_sck;
                     in_trans->type1 = TRANS_TYPE_SERVER;
                     in_trans->status = TRANS_STATUS_UP;
+                    in_trans->is_term = self->is_term;
+                    g_strncpy(in_trans->addr, self->addr, sizeof(self->addr) - 1);
+                    g_strncpy(in_trans->port, self->port, sizeof(self->port) - 1);
 
                     if (self->trans_conn_in(self, in_trans) != 0)
                     {
@@ -198,9 +282,18 @@ trans_check_wait_objs(struct trans *self)
                 if (self->trans_data_in != 0)
                 {
                     rv = self->trans_data_in(self);
-                    init_stream(self->in_s, 0);
+                    if (self->no_stream_init_on_data_in == 0)
+                    {
+                        init_stream(self->in_s, 0);
+                    }
                 }
             }
+        }
+        if (send_waiting(self, 0) != 0)
+        {
+            /* error */
+            self->status = TRANS_STATUS_DOWN;
+            return 1;
         }
     }
 
@@ -220,15 +313,28 @@ trans_force_read_s(struct trans *self, struct stream *in_s, int size)
 
     while (size > 0)
     {
+        /* make sure stream has room */
+        if ((in_s->end + size) > (in_s->data + in_s->size))
+        {
+            return 1;
+        }
         rcvd = g_tcp_recv(self->sck, in_s->end, size, 0);
-
         if (rcvd == -1)
         {
             if (g_tcp_last_error_would_block(self->sck))
             {
-                if (!g_tcp_can_recv(self->sck, 10))
+                if (!g_tcp_can_recv(self->sck, 100))
                 {
                     /* check for term here */
+                    if (self->is_term != 0)
+                    {
+                        if (self->is_term())
+                        {
+                            /* term */
+                            self->status = TRANS_STATUS_DOWN;
+                            return 1;
+                        }
+                    }
                 }
             }
             else
@@ -277,6 +383,12 @@ trans_force_write_s(struct trans *self, struct stream *out_s)
     size = (int)(out_s->end - out_s->data);
     total = 0;
 
+    if (send_waiting(self, 1) != 0)
+    {
+        self->status = TRANS_STATUS_DOWN;
+        return 1;
+    }
+
     while (total < size)
     {
         sent = g_tcp_send(self->sck, out_s->data + total, size - total, 0);
@@ -285,9 +397,18 @@ trans_force_write_s(struct trans *self, struct stream *out_s)
         {
             if (g_tcp_last_error_would_block(self->sck))
             {
-                if (!g_tcp_can_send(self->sck, 10))
+                if (!g_tcp_can_send(self->sck, 100))
                 {
                     /* check for term here */
+                    if (self->is_term != 0)
+                    {
+                        if (self->is_term())
+                        {
+                            /* term */
+                            self->status = TRANS_STATUS_DOWN;
+                            return 1;
+                        }
+                    }
                 }
             }
             else
@@ -317,6 +438,52 @@ int APP_CC
 trans_force_write(struct trans *self)
 {
     return trans_force_write_s(self, self->out_s);
+}
+
+/*****************************************************************************/
+int APP_CC
+trans_write_copy(struct trans *self)
+{
+    int size;
+    struct stream *out_s;
+    struct stream *wait_s;
+    struct stream *temp_s;
+
+    if (self->status != TRANS_STATUS_UP)
+    {
+        return 1;
+    }
+
+    out_s = self->out_s;
+    size = (int)(out_s->end - out_s->data);
+    make_stream(wait_s);
+    init_stream(wait_s, size);
+    out_uint8a(wait_s, out_s->data, size);
+    s_mark_end(wait_s);
+    wait_s->p = wait_s->data;
+    if (self->wait_s == 0)
+    {
+        self->wait_s = wait_s;
+    }
+    else
+    {
+        temp_s = self->wait_s;
+        while (temp_s->next_packet != 0)
+        {
+            temp_s = (struct stream *) (temp_s->next_packet);
+        }
+        temp_s->next_packet = (char *) wait_s;
+    }
+
+    /* try to send */
+    if (send_waiting(self, 0) != 0)
+    {
+        /* error */
+        self->status = TRANS_STATUS_DOWN;
+        return 1;
+    }
+
+    return 0;
 }
 
 /*****************************************************************************/

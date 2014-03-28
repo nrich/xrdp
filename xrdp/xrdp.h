@@ -27,8 +27,8 @@
 #include "trans.h"
 #include "list.h"
 #include "libxrdpinc.h"
-#include "xrdp_types.h"
 #include "xrdp_constants.h"
+#include "xrdp_types.h"
 #include "defines.h"
 #include "os_calls.h"
 #include "ssl_calls.h"
@@ -41,7 +41,7 @@
 long APP_CC
 g_xrdp_sync(long (*sync_func)(long param1, long param2), long sync_param1,
             long sync_param2);
-int APP_CC
+int DEFAULT_CC
 g_is_term(void);
 void APP_CC
 g_set_term(int in_val);
@@ -108,6 +108,8 @@ xrdp_wm_send_bitmap(struct xrdp_wm* self, struct xrdp_bitmap* bitmap,
                     int x, int y, int cx, int cy);
 int APP_CC
 xrdp_wm_set_pointer(struct xrdp_wm* self, int cache_idx);
+unsigned int APP_CC
+xrdp_wm_htoi (const char *ptr);
 int APP_CC
 xrdp_wm_set_focused(struct xrdp_wm* self, struct xrdp_bitmap* wnd);
 int APP_CC
@@ -283,6 +285,20 @@ xrdp_painter_copy(struct xrdp_painter* self,
                   int x, int y, int cx, int cy,
                   int srcx, int srcy);
 int APP_CC
+xrdp_painter_composite(struct xrdp_painter* self,
+                       struct xrdp_bitmap* src,
+                       int srcformat,
+                       int srcwidth,
+                       int srcrepeat,
+                       struct xrdp_bitmap* dst,
+                       int* srctransform,
+                       int mskflags,
+                       struct xrdp_bitmap* msk,
+                       int mskformat, int mskwidth, int mskrepeat, int op,
+                       int srcx, int srcy, int mskx, int msky,
+                       int dstx, int dsty, int width, int height,
+                       int dstformat);
+int APP_CC
 xrdp_painter_line(struct xrdp_painter* self,
                   struct xrdp_bitmap* bitmap,
                   int x1, int y1, int x2, int y2);
@@ -335,6 +351,8 @@ get_keymaps(int keylayout, struct xrdp_keymap* keymap);
 /* xrdp_login_wnd.c */
 int APP_CC
 xrdp_login_wnd_create(struct xrdp_wm* self);
+int APP_CC
+load_xrdp_config(struct xrdp_config *config, int bpp);
 
 /* xrdp_bitmap_compress.c */
 int APP_CC
@@ -373,6 +391,20 @@ server_screen_blt(struct xrdp_mod* mod, int x, int y, int cx, int cy,
 int DEFAULT_CC
 server_paint_rect(struct xrdp_mod* mod, int x, int y, int cx, int cy,
                   char* data, int width, int height, int srcx, int srcy);
+int DEFAULT_CC
+server_paint_rect_bpp(struct xrdp_mod* mod, int x, int y, int cx, int cy,
+                      char* data, int width, int height, int srcx, int srcy,
+                      int bpp);
+int DEFAULT_CC
+server_composite(struct xrdp_mod* mod, int srcidx, int srcformat, int srcwidth,
+                 int srcrepeat, int* srctransform, int mskflags, int mskidx,
+                 int mskformat, int mskwidth, int mskrepeat, int op,
+                 int srcx, int srcy, int mskx, int msky,
+                 int dstx, int dsty, int width, int height, int dstformat);
+int DEFAULT_CC
+server_paint_rects(struct xrdp_mod* mod, int num_drects, short *drects,
+                   int num_crects, short *crects,
+                   char *data, int width, int height, int flags);
 int DEFAULT_CC
 server_set_pointer(struct xrdp_mod* mod, int x, int y,
                    char* data, char* mask);
@@ -434,6 +466,9 @@ int DEFAULT_CC
 server_create_os_surface(struct xrdp_mod* mod, int id,
                          int width, int height);
 int DEFAULT_CC
+server_create_os_surface_bpp(struct xrdp_mod* mod, int id,
+                             int width, int height, int bpp);
+int DEFAULT_CC
 server_switch_os_surface(struct xrdp_mod* mod, int id);
 int DEFAULT_CC
 server_delete_os_surface(struct xrdp_mod* mod, int id);
@@ -468,3 +503,7 @@ int DEFAULT_CC
 server_monitored_desktop(struct xrdp_mod* mod,
                          struct rail_monitored_desktop_order* mdo,
                          int flags);
+int DEFAULT_CC
+server_add_char_alpha(struct xrdp_mod* mod, int font, int charactor,
+                      int offset, int baseline,
+                      int width, int height, char* data);

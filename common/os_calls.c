@@ -1,7 +1,7 @@
 /**
  * xrdp: A Remote Desktop Protocol server.
  *
- * Copyright (C) Jay Sorg 2004-2013
+ * Copyright (C) Jay Sorg 2004-2014
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,11 @@
  *
  * put all the os / arch define in here you want
  */
+
+/* To test for Windows (64 bit or 32 bit) use _WIN32 and _WIN64 in addition
+   for 64 bit windows.  _WIN32 is defined for both.
+   To test for Linux use __linux__.
+   To test for BSD use BSD */
 
 #if defined(HAVE_CONFIG_H)
 #include "config_ac.h"
@@ -42,6 +47,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <dlfcn.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -57,6 +64,13 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <locale.h>
+
+/* this is so we can use #ifdef BSD later */
+/* This is the recommended way of detecting BSD in the
+   FreeBSD Porter's Handbook. */
+#if (defined(__unix__) || defined(unix)) && !defined(USG)
+#include <sys/param.h>
+#endif
 
 #include "os_calls.h"
 #include "arch.h"
@@ -493,6 +507,96 @@ g_tcp_socket(void)
 }
 
 /*****************************************************************************/
+/* returns error */
+int APP_CC
+g_sck_set_send_buffer_bytes(int sck, int bytes)
+{
+    int option_value;
+#if defined(_WIN32)
+    int option_len;
+#else
+    unsigned int option_len;
+#endif
+
+    option_value = bytes;
+    option_len = sizeof(option_value);
+    if (setsockopt(sck, SOL_SOCKET, SO_SNDBUF, (char *)&option_value,
+                   option_len) != 0)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+/* returns error */
+int APP_CC
+g_sck_get_send_buffer_bytes(int sck, int *bytes)
+{
+    int option_value;
+#if defined(_WIN32)
+    int option_len;
+#else
+    unsigned int option_len;
+#endif
+
+    option_value = 0;
+    option_len = sizeof(option_value);
+    if (getsockopt(sck, SOL_SOCKET, SO_SNDBUF, (char *)&option_value,
+                   &option_len) != 0)
+    {
+        return 1;
+    }
+    *bytes = option_value;
+    return 0;
+}
+
+/*****************************************************************************/
+/* returns error */
+int APP_CC
+g_sck_set_recv_buffer_bytes(int sck, int bytes)
+{
+    int option_value;
+#if defined(_WIN32)
+    int option_len;
+#else
+    unsigned int option_len;
+#endif
+
+    option_value = bytes;
+    option_len = sizeof(option_value);
+    if (setsockopt(sck, SOL_SOCKET, SO_RCVBUF, (char *)&option_value,
+                   option_len) != 0)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+/* returns error */
+int APP_CC
+g_sck_get_recv_buffer_bytes(int sck, int *bytes)
+{
+    int option_value;
+#if defined(_WIN32)
+    int option_len;
+#else
+    unsigned int option_len;
+#endif
+
+    option_value = 0;
+    option_len = sizeof(option_value);
+    if (getsockopt(sck, SOL_SOCKET, SO_RCVBUF, (char *)&option_value,
+                   &option_len) != 0)
+    {
+        return 1;
+    }
+    *bytes = option_value;
+    return 0;
+}
+
+/*****************************************************************************/
 int APP_CC
 g_tcp_local_socket(void)
 {
@@ -500,6 +604,47 @@ g_tcp_local_socket(void)
     return 0;
 #else
     return socket(PF_LOCAL, SOCK_STREAM, 0);
+#endif
+}
+
+/*****************************************************************************/
+/* returns error */
+int APP_CC
+g_sck_get_peer_cred(int sck, int *pid, int *uid, int *gid)
+{
+#if defined(SO_PEERCRED)
+#if defined(_WIN32)
+    int ucred_length;
+#else
+    unsigned int ucred_length;
+#endif
+    struct myucred
+    {
+        pid_t pid;
+        uid_t uid;
+        gid_t gid;
+    } credentials;
+
+    ucred_length = sizeof(credentials);
+    if (getsockopt(sck, SOL_SOCKET, SO_PEERCRED, &credentials, &ucred_length))
+    {
+        return 1;
+    }
+    if (pid != 0)
+    {
+        *pid = credentials.pid;
+    }
+    if (uid != 0)
+    {
+        *uid = credentials.uid;
+    }
+    if (gid != 0)
+    {
+        *gid = credentials.gid;
+    }
+    return 0;
+#else
+    return 1;
 #endif
 }
 
@@ -845,6 +990,41 @@ g_tcp_accept(int sck)
         log_message(LOG_LEVEL_INFO,ipAddr);
     }
     return ret ;
+}
+
+/*****************************************************************************/
+int APP_CC
+g_sck_accept(int sck, char *addr, int addr_bytes, char *port, int port_bytes)
+{
+    int ret;
+    char ipAddr[256];
+    struct sockaddr_in s;
+#if defined(_WIN32)
+    signed int i;
+#else
+    unsigned int i;
+#endif
+
+    i = sizeof(struct sockaddr_in);
+    memset(&s, 0, i);
+    ret = accept(sck, (struct sockaddr *)&s, &i);
+    if (ret > 0)
+    {
+        g_snprintf(ipAddr, 255, "A connection received from: %s port %d",
+                   inet_ntoa(s.sin_addr), ntohs(s.sin_port));
+        log_message(LOG_LEVEL_INFO,ipAddr);
+        if (s.sin_family == AF_INET)
+        {
+            g_snprintf(addr, addr_bytes, "%s", inet_ntoa(s.sin_addr));
+            g_snprintf(port, port_bytes, "%d", ntohs(s.sin_port));
+        }
+        if (s.sin_family == AF_UNIX)
+        {
+            g_strncpy(addr, "", addr_bytes - 1);
+            g_strncpy(port, "", port_bytes - 1);
+        }
+    }
+    return ret;
 }
 
 /*****************************************************************************/
@@ -2501,6 +2681,17 @@ g_signal_child_stop(void (*func)(int))
 }
 
 /*****************************************************************************/
+
+void APP_CC
+g_signal_segfault(void (*func)(int))
+{
+#if defined(_WIN32)
+#else
+    signal(SIGSEGV, func);
+#endif
+}
+
+/*****************************************************************************/
 /* does not work in win32 */
 void APP_CC
 g_signal_hang_up(void (*func)(int))
@@ -2934,4 +3125,51 @@ g_time3(void)
     gettimeofday(&tp, 0);
     return (tp.tv_sec * 1000) + (tp.tv_usec / 1000);
 #endif
+}
+
+/*****************************************************************************/
+/* returns boolean */
+int APP_CC
+g_text2bool(const char *s)
+{
+    if ( (g_atoi(s) != 0) ||
+         (0 == g_strcasecmp(s, "true")) ||
+         (0 == g_strcasecmp(s, "on")) ||
+         (0 == g_strcasecmp(s, "yes")))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+/* returns pointer or nil on error */
+void * APP_CC
+g_shmat(int shmid)
+{
+#if defined(_WIN32)
+    return 0;
+#else
+     return shmat(shmid, 0, 0);
+#endif
+}
+
+/*****************************************************************************/
+/* returns -1 on error 0 on success */
+int APP_CC
+g_shmdt(const void *shmaddr)
+{
+#if defined(_WIN32)
+    return -1;
+#else
+    return shmdt(shmaddr);
+#endif
+}
+
+/*****************************************************************************/
+/* returns -1 on error 0 on success */
+int APP_CC
+g_gethostname(char *name, int len)
+{
+    return gethostname(name, len);
 }

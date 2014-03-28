@@ -1,7 +1,7 @@
 /**
  * xrdp: A Remote Desktop Protocol server.
  *
- * Copyright (C) Jay Sorg 2004-2012
+ * Copyright (C) Laxmikant Rashinkar 2013 LK.Rashinkar@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,20 @@
  * limitations under the License.
  */
 
-#ifndef __XRDP_COLOR_H
-#define __XRDP_COLOR_H
+ /* FIFO implementation to store a pointer to a user struct */
 
-char* APP_CC
-convert_bitmap(int in_bpp, int out_bpp, char* bmpdata,
-               int width, int height, int* palette);
-int APP_CC
-convert_color(int in_bpp, int out_bpp, int in_color, int* palette);
+typedef struct fifo
+{
+    long* user_data;
+    int   rd_ptr;
+    int   wr_ptr;
+    int   entries;
+} FIFO;
 
-#endif
+int   fifo_init(FIFO* fp, int num_entries);
+int   fifo_deinit(FIFO* fp);
+int   fifo_is_empty(FIFO* fp);
+int   fifo_insert(FIFO* fp, void* data);
+void* fifo_remove(FIFO* fp);
+void* fifo_peek(FIFO* fp);
+

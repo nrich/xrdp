@@ -46,7 +46,6 @@ static int g_rdpsnd_index = -1;
 static int g_rdpdr_index = -1;
 static int g_rail_index = -1;
 static int g_drdynvc_index = -1;
-static int g_sent = 0; /* if sent data to xrdp, waiting response */
 
 /* state info for dynamic virtual channels */
 static struct xrdp_api_data *g_dvc_channels[MAX_DVC_CHANNELS];
@@ -72,9 +71,155 @@ tbus g_exec_mutex;
 tbus g_exec_sem;
 int g_exec_pid = 0;
 
+#define ARRAYSIZE(x) (sizeof(x)/sizeof(*(x)))
+
 /* each time we create a DVC we need a unique DVC channel id */
 /* this variable gets bumped up once per DVC we create       */
 tui32 g_dvc_chan_id = 100;
+
+struct timeout_obj
+{
+    tui32 mstime;
+    void *data;
+    void (*callback)(void *data);
+    struct timeout_obj *next;
+};
+
+static struct timeout_obj *g_timeout_head = 0;
+static struct timeout_obj *g_timeout_tail = 0;
+
+/*****************************************************************************/
+int APP_CC
+add_timeout(int msoffset, void (*callback)(void *data), void *data)
+{
+    struct timeout_obj *tobj;
+    tui32 now;
+
+    LOG(10, ("add_timeout:"));
+    now = g_time3();
+    tobj = g_malloc(sizeof(struct timeout_obj), 1);
+    tobj->mstime = now + msoffset;
+    tobj->callback = callback;
+    tobj->data = data;
+    if (g_timeout_tail == 0)
+    {
+        g_timeout_head = tobj;
+        g_timeout_tail = tobj;
+    }
+    else
+    {
+        g_timeout_tail->next = tobj;
+        g_timeout_tail = tobj;
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+static int APP_CC
+get_timeout(int *timeout)
+{
+    struct timeout_obj *tobj;
+    tui32 now;
+    int ltimeout;
+
+    LOG(10, ("get_timeout:"));
+    ltimeout = *timeout;
+    if (ltimeout < 1)
+    {
+        ltimeout = 0;
+    }
+    tobj = g_timeout_head;
+    if (tobj != 0)
+    {
+        now = g_time3();
+        while (tobj != 0)
+        {
+            LOG(10, ("  now %u tobj->mstime %u", now, tobj->mstime));
+            if (now < tobj->mstime)
+            {
+                ltimeout = tobj->mstime - now;
+            }
+            tobj = tobj->next;
+        }
+    }
+    if (ltimeout > 0)
+    {
+        LOG(10, ("  ltimeout %d", ltimeout));
+        if (*timeout < 1)
+        {
+            *timeout = ltimeout;
+        }
+        else
+        {
+            if (*timeout > ltimeout)
+            {
+                *timeout = ltimeout;
+            }
+        }
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+static int APP_CC
+check_timeout(void)
+{
+    struct timeout_obj *tobj;
+    struct timeout_obj *last_tobj;
+    struct timeout_obj *temp_tobj;
+    int count;
+    tui32 now;
+
+    LOG(10, ("check_timeout:"));
+    count = 0;
+    tobj = g_timeout_head;
+    if (tobj != 0)
+    {
+        last_tobj = 0;
+        while (tobj != 0)
+        {
+            count++;
+            now = g_time3();
+            if (now >= tobj->mstime)
+            {
+                tobj->callback(tobj->data);
+                if (last_tobj == 0)
+                {
+                    g_timeout_head = tobj->next;
+                    if (g_timeout_head == 0)
+                    {
+                        g_timeout_tail = 0;
+                    }
+                }
+                else
+                {
+                    last_tobj->next = tobj->next;
+                    if (g_timeout_tail == tobj)
+                    {
+                        g_timeout_tail = last_tobj;
+                    }
+                }
+                temp_tobj = tobj;
+                tobj = tobj->next;
+                g_free(temp_tobj);
+            }
+            else
+            {
+                last_tobj = tobj;
+                tobj = tobj->next;
+            }
+        }
+    }
+    LOG(10, ("  count %d", count));
+    return 0;
+}
+
+/*****************************************************************************/
+int DEFAULT_CC
+g_is_term(void)
+{
+    return g_is_wait_obj_set(g_term_event);
+}
 
 /*****************************************************************************/
 /* add data to chan_item, on its way to the client */
@@ -149,11 +294,10 @@ send_data_from_chan_item(struct chan_item *chan_item)
     out_uint32_le(s, cod->s->size);
     out_uint8a(s, cod->s->p, size);
     s_mark_end(s);
-    LOGM((LOG_LEVEL_DEBUG, "chansrv::send_channel_data: -- "
+    LOGM((LOG_LEVEL_DEBUG, "chansrv::send_data_from_chan_item: -- "
           "size %d chan_flags 0x%8.8x", size, chan_flags));
-    g_sent = 1;
-    error = trans_force_write(g_con_trans);
 
+    error = trans_write_copy(g_con_trans);
     if (error != 0)
     {
         return 1;
@@ -217,15 +361,37 @@ send_channel_data(int chan_id, char *data, int size)
         if (g_chan_items[index].id == chan_id)
         {
             add_data_to_chan_item(g_chan_items + index, data, size);
-            if (g_sent == 0)
-            {
-                check_chan_items();
-            }
+            check_chan_items();
             return 0;
         }
     }
 
     return 1;
+}
+
+/*****************************************************************************/
+/* returns error */
+int APP_CC
+send_rail_drawing_orders(char* data, int size)
+{
+    LOGM((LOG_LEVEL_DEBUG, "chansrv::send_rail_drawing_orders: size %d", size));
+
+    struct stream* s;
+    int error;
+
+    s = trans_get_out_s(g_con_trans, 8192);
+    out_uint32_le(s, 0); /* version */
+    out_uint32_le(s, 8 + 8 + size); /* size */
+    out_uint32_le(s, 10); /* msg id */
+    out_uint32_le(s, 8 + size); /* size */
+    out_uint8a(s, data, size);
+    s_mark_end(s);
+    error = trans_force_write(g_con_trans);
+    if (error != 0)
+    {
+        return 1;
+    }
+    return 0;
 }
 
 /*****************************************************************************/
@@ -248,7 +414,7 @@ send_init_response_message(void)
     out_uint32_le(s, 2); /* msg id */
     out_uint32_le(s, 8); /* size */
     s_mark_end(s);
-    return trans_force_write(g_con_trans);
+    return trans_write_copy(g_con_trans);
 }
 
 /*****************************************************************************/
@@ -271,7 +437,7 @@ send_channel_setup_response_message(void)
     out_uint32_le(s, 4); /* msg id */
     out_uint32_le(s, 8); /* size */
     s_mark_end(s);
-    return trans_force_write(g_con_trans);
+    return trans_write_copy(g_con_trans);
 }
 
 /*****************************************************************************/
@@ -294,7 +460,7 @@ send_channel_data_response_message(void)
     out_uint32_le(s, 6); /* msg id */
     out_uint32_le(s, 8); /* size */
     s_mark_end(s);
-    return trans_force_write(g_con_trans);
+    return trans_write_copy(g_con_trans);
 }
 
 /*****************************************************************************/
@@ -380,6 +546,7 @@ process_message_channel_setup(struct stream *s)
             g_rdpdr_index = g_num_chan_items;
             g_rdpdr_chan_id = ci->id;
         }
+        /* disabled for now */
         else if (g_strcasecmp(ci->name, "rail") == 0)
         {
             g_rail_index = g_num_chan_items;
@@ -408,8 +575,6 @@ process_message_channel_setup(struct stream *s)
 
     if (g_rdpsnd_index >= 0)
     {
-        /* gets reset to 1 by next send_data_from_chan_item */
-        g_sent = 0; /* wait for response! */
         sound_init();
     }
 
@@ -476,8 +641,9 @@ process_message_channel_data(struct stream *s)
         {
             rv = drdynvc_data_in(s, chan_id, chan_flags, length, total_length);
         }
-        else if (chan_id == ((struct xrdp_api_data *)
-                             (g_api_con_trans->callback_data))->chan_id)
+        else if ((g_api_con_trans != 0) &&
+                        (chan_id == ((struct xrdp_api_data *)
+                             (g_api_con_trans->callback_data))->chan_id))
         {
             LOG(10, ("process_message_channel_data length %d total_length %d "
                      "chan_flags 0x%8.8x", length, total_length, chan_flags));
@@ -493,7 +659,7 @@ process_message_channel_data(struct stream *s)
             if (chan_flags & 2) /* last */
             {
                 s_mark_end(ls);
-                trans_force_write(g_api_con_trans);
+                rv = trans_force_write(g_api_con_trans);
             }
         }
     }
@@ -507,7 +673,6 @@ static int APP_CC
 process_message_channel_data_response(struct stream *s)
 {
     LOG(10, ("process_message_channel_data_response:"));
-    g_sent = 0;
     check_chan_items();
     return 0;
 }
@@ -844,13 +1009,15 @@ setup_listen(void)
 
     if (g_use_unix_socket)
     {
-        g_lis_trans = trans_create(2, 8192, 8192);
+        g_lis_trans = trans_create(TRANS_MODE_UNIX, 8192, 8192);
+        g_lis_trans->is_term = g_is_term;
         g_snprintf(port, 255, "/tmp/.xrdp/xrdp_chansrv_socket_%d",
                    7200 + g_display_num);
     }
     else
     {
-        g_lis_trans = trans_create(1, 8192, 8192);
+        g_lis_trans = trans_create(TRANS_MODE_TCP, 8192, 8192);
+        g_lis_trans->is_term = g_is_term;
         g_snprintf(port, 255, "%d", 7200 + g_display_num);
     }
 
@@ -875,6 +1042,7 @@ setup_api_listen(void)
     int error = 0;
 
     g_api_lis_trans = trans_create(TRANS_MODE_UNIX, 8192 * 4, 8192 * 4);
+    g_api_lis_trans->is_term = g_is_term;
     g_snprintf(port, 255, "/tmp/.xrdp/xrdpapi_%d", g_display_num);
     g_api_lis_trans->trans_conn_in = my_api_trans_conn_in;
     error = trans_listen(g_api_lis_trans, port);
@@ -894,7 +1062,9 @@ THREAD_RV THREAD_CC
 channel_thread_loop(void *in_val)
 {
     tbus objs[32];
+    tbus wobjs[32];
     int num_objs;
+    int num_wobjs;
     int timeout;
     int error;
     THREAD_RV rv;
@@ -908,13 +1078,15 @@ channel_thread_loop(void *in_val)
     {
         timeout = -1;
         num_objs = 0;
+        num_wobjs = 0;
         objs[num_objs] = g_term_event;
         num_objs++;
         trans_get_wait_objs(g_lis_trans, objs, &num_objs);
         trans_get_wait_objs(g_api_lis_trans, objs, &num_objs);
 
-        while (g_obj_wait(objs, num_objs, 0, 0, timeout) == 0)
+        while (g_obj_wait(objs, num_objs, wobjs, num_wobjs, timeout) == 0)
         {
+            check_timeout();
             if (g_is_wait_obj_set(g_term_event))
             {
                 LOGM((LOG_LEVEL_INFO, "channel_thread_loop: g_term_event set"));
@@ -987,16 +1159,19 @@ channel_thread_loop(void *in_val)
             xfuse_check_wait_objs();
             timeout = -1;
             num_objs = 0;
+            num_wobjs = 0;
             objs[num_objs] = g_term_event;
             num_objs++;
             trans_get_wait_objs(g_lis_trans, objs, &num_objs);
-            trans_get_wait_objs(g_con_trans, objs, &num_objs);
+            trans_get_wait_objs_rw(g_con_trans, objs, &num_objs,
+                                   wobjs, &num_wobjs);
             trans_get_wait_objs(g_api_lis_trans, objs, &num_objs);
             trans_get_wait_objs(g_api_con_trans, objs, &num_objs);
             xcommon_get_wait_objs(objs, &num_objs, &timeout);
             sound_get_wait_objs(objs, &num_objs, &timeout);
             dev_redir_get_wait_objs(objs, &num_objs, &timeout);
             xfuse_get_wait_objs(objs, &num_objs, &timeout);
+            get_timeout(&timeout);
         } /* end while (g_obj_wait(objs, num_objs, 0, 0, timeout) == 0) */
     }
 
@@ -1032,23 +1207,29 @@ nil_signal_handler(int sig)
 void DEFAULT_CC
 child_signal_handler(int sig)
 {
-    int i1;
+    int pid;
 
-    LOG(10, ("child_signal_handler:"));
-
+    LOG(0, ("child_signal_handler:"));
     do
     {
-        i1 = g_waitchild();
-
-        if (i1 == g_exec_pid)
+        pid = g_waitchild();
+        LOG(0, ("child_signal_handler: child pid %d", pid));
+        if ((pid == g_exec_pid) && (pid > 0))
         {
-            LOG(0, ("child_signal_handler: found pid %d", i1));
+            LOG(0, ("child_signal_handler: found pid %d", pid));
             //shutdownx();
         }
-
-        LOG(10, ("  %d", i1));
     }
-    while (i1 >= 0);
+    while (pid >= 0);
+}
+
+/*****************************************************************************/
+void DEFAULT_CC
+segfault_signal_handler(int sig)
+{
+    LOG(0, ("segfault_signal_handler: entered......."));
+    xfuse_deinit();
+    exit(0);
 }
 
 /*****************************************************************************/
@@ -1164,6 +1345,47 @@ read_ini(void)
 }
 
 /*****************************************************************************/
+static char* APP_CC
+get_log_path()
+{
+    char* log_path = 0;
+
+    log_path = g_getenv("CHANSRV_LOG_PATH");
+    if (log_path == 0)
+    {
+        log_path = g_getenv("HOME");
+    }
+    return log_path;
+}
+
+/*****************************************************************************/
+static unsigned int APP_CC
+get_log_level(const char* level_str, unsigned int default_level)
+{
+    static const char* levels[] = {
+        "LOG_LEVEL_ALWAYS",
+        "LOG_LEVEL_ERROR",
+        "LOG_LEVEL_WARNING",
+        "LOG_LEVEL_INFO",
+        "LOG_LEVEL_DEBUG"
+    };
+    unsigned int i;
+
+    if (level_str == NULL || level_str[0] == 0)
+    {
+        return default_level;
+    }
+    for (i = 0; i < ARRAYSIZE(levels); ++i)
+    {
+        if (g_strcasecmp(levels[i], level_str) == 0)
+        {
+            return i;
+        }
+    }
+    return default_level;
+}
+
+/*****************************************************************************/
 static int APP_CC
 run_exec(void)
 {
@@ -1197,19 +1419,19 @@ main(int argc, char **argv)
     tbus waiters[4];
     int pid = 0;
     char text[256];
-    char *home_text;
+    char* log_path;
     char *display_text;
     char log_file[256];
     enum logReturns error;
     struct log_config logconfig;
+    unsigned int log_level;
 
     g_init("xrdp-chansrv"); /* os_calls */
 
-    home_text = g_getenv("HOME");
-
-    if (home_text == 0)
+    log_path = get_log_path();
+    if (log_path == 0)
     {
-        g_writeln("error reading HOME environment variable");
+        g_writeln("error reading CHANSRV_LOG_PATH and HOME environment variable");
         g_deinit();
         return 1;
     }
@@ -1217,10 +1439,12 @@ main(int argc, char **argv)
     read_ini();
     pid = g_getpid();
 
+    log_level = get_log_level(g_getenv("CHANSRV_LOG_LEVEL"), LOG_LEVEL_ERROR);
+
     /* starting logging subsystem */
     g_memset(&logconfig, 0, sizeof(struct log_config));
     logconfig.program_name = "XRDP-Chansrv";
-    g_snprintf(log_file, 255, "%s/xrdp-chansrv.log", home_text);
+    g_snprintf(log_file, 255, "%s/xrdp-chansrv.log", log_path);
     g_writeln("chansrv::main: using log file [%s]", log_file);
 
     if (g_file_exist(log_file))
@@ -1230,7 +1454,7 @@ main(int argc, char **argv)
 
     logconfig.log_file = log_file;
     logconfig.fd = -1;
-    logconfig.log_level = LOG_LEVEL_ERROR;
+    logconfig.log_level = log_level;
     logconfig.enable_syslog = 0;
     logconfig.syslog_level = 0;
     error = log_start_from_param(&logconfig);
@@ -1262,6 +1486,8 @@ main(int argc, char **argv)
     g_signal_user_interrupt(term_signal_handler); /* SIGINT */
     g_signal_pipe(nil_signal_handler); /* SIGPIPE */
     g_signal_child_stop(child_signal_handler); /* SIGCHLD */
+    g_signal_segfault(segfault_signal_handler);
+
     display_text = g_getenv("DISPLAY");
     LOGM((LOG_LEVEL_INFO, "main: DISPLAY env var set to %s", display_text));
     get_display_num_from_display(display_text);

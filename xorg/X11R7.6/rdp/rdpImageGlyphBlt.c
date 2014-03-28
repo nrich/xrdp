@@ -108,7 +108,7 @@ rdpImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC,
 
             if (g_do_dirty_os)
             {
-                LLOGLN(10, ("rdpImageGlyphBlt: gettig dirty"));
+                LLOGLN(10, ("rdpImageGlyphBlt: getting dirty"));
                 pDstPriv->is_dirty = 1;
                 pDirtyPriv = pDstPriv;
                 dirty_type = RDI_IMGLL;
@@ -134,7 +134,7 @@ rdpImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC,
 
                 if (g_do_dirty_ons)
                 {
-                    LLOGLN(0, ("rdpImageGlyphBlt: gettig dirty"));
+                    LLOGLN(10, ("rdpImageGlyphBlt: getting dirty"));
                     g_screenPriv.is_dirty = 1;
                     pDirtyPriv = &g_screenPriv;
                     dirty_type = RDI_IMGLL;
@@ -169,7 +169,7 @@ rdpImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC,
         if (dirty_type != 0)
         {
             RegionInit(&reg1, &box, 0);
-            draw_item_add_img_region(pDirtyPriv, &reg1, GXcopy, dirty_type, 13);
+            draw_item_add_img_region(pDirtyPriv, &reg1, GXcopy, dirty_type, TAG_IMAGEGLYPHBLT);
             RegionUninit(&reg1);
         }
         else if (got_id)
@@ -189,7 +189,7 @@ rdpImageGlyphBlt(DrawablePtr pDrawable, GCPtr pGC,
         {
             if (dirty_type != 0)
             {
-                draw_item_add_img_region(pDirtyPriv, &reg, GXcopy, dirty_type, 13);
+                draw_item_add_img_region(pDirtyPriv, &reg, GXcopy, dirty_type, TAG_IMAGEGLYPHBLT);
             }
             else if (got_id)
             {

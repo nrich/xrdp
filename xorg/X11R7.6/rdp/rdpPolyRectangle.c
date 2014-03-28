@@ -118,7 +118,7 @@ rdpPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
 
             if (g_do_dirty_os)
             {
-                LLOGLN(10, ("rdpPolyRectangle: gettig dirty"));
+                LLOGLN(10, ("rdpPolyRectangle: getting dirty"));
                 pDstPriv->is_dirty = 1;
                 pDirtyPriv = pDstPriv;
                 dirty_type = RDI_IMGLL;
@@ -144,7 +144,7 @@ rdpPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
 
                 if (g_do_dirty_ons)
                 {
-                    LLOGLN(10, ("rdpPolyRectangle: gettig dirty"));
+                    LLOGLN(10, ("rdpPolyRectangle: getting dirty"));
                     g_screenPriv.is_dirty = 1;
                     pDirtyPriv = &g_screenPriv;
                     dirty_type = RDI_IMGLL;
@@ -221,7 +221,7 @@ rdpPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
                 }
                 else
                 {
-                    draw_item_add_img_region(pDirtyPriv, fill_reg, GXcopy, dirty_type, 4);
+                    draw_item_add_img_region(pDirtyPriv, fill_reg, GXcopy, dirty_type, TAG_POLYRECTANGLE);
                 }
 
                 RegionDestroy(fill_reg);
@@ -275,7 +275,7 @@ rdpPolyRectangle(DrawablePtr pDrawable, GCPtr pGC, int nrects,
                     }
                     else
                     {
-                        draw_item_add_img_region(pDirtyPriv, &clip_reg, GXcopy, dirty_type, 4);
+                        draw_item_add_img_region(pDirtyPriv, &clip_reg, GXcopy, dirty_type, TAG_POLYRECTANGLE);
                     }
                 }
                 else if (got_id)

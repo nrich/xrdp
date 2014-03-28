@@ -1,7 +1,7 @@
 /**
  * xrdp: A Remote Desktop Protocol server.
  *
- * Copyright (C) Jay Sorg 2004-2013
+ * Copyright (C) Jay Sorg 2004-2014
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,18 +37,13 @@
 #include "file_loc.h"
 #include "xrdp_client_info.h"
 
-/* tcp */
-struct xrdp_tcp
-{
-  struct trans* trans;
-  struct xrdp_iso* iso_layer; /* owner */
-};
-
 /* iso */
 struct xrdp_iso
 {
   struct xrdp_mcs* mcs_layer; /* owner */
-  struct xrdp_tcp* tcp_layer;
+  int requestedProtocol;
+  int selectedProtocol;
+  struct trans* trans;
 };
 
 /* used in mcs */
@@ -71,6 +66,20 @@ struct xrdp_mcs
   struct list* channel_list;
 };
 
+/* Encryption Methods */
+#define CRYPT_METHOD_NONE              0x00000000
+#define CRYPT_METHOD_40BIT             0x00000001
+#define CRYPT_METHOD_128BIT            0x00000002
+#define CRYPT_METHOD_56BIT             0x00000008
+#define CRYPT_METHOD_FIPS              0x00000010
+
+/* Encryption Levels */
+#define CRYPT_LEVEL_NONE               0x00000000
+#define CRYPT_LEVEL_LOW                0x00000001
+#define CRYPT_LEVEL_CLIENT_COMPATIBLE  0x00000002
+#define CRYPT_LEVEL_HIGH               0x00000003
+#define CRYPT_LEVEL_FIPS               0x00000004
+
 /* sec */
 struct xrdp_sec
 {
@@ -88,9 +97,9 @@ struct xrdp_sec
   char encrypt_key[16];
   char decrypt_update_key[16];
   char encrypt_update_key[16];
-  int rc4_key_size; /* 1 = 40 bit, 2 = 128 bit */
+  int crypt_method;
   int rc4_key_len; /* 8 = 40 bit, 16 = 128 bit */
-  int crypt_level; /* 1, 2, 3 = low, meduim, high */
+  int crypt_level;
   char sign_key[16];
   void* decrypt_rc4_info;
   void* encrypt_rc4_info;
@@ -99,6 +108,13 @@ struct xrdp_sec
   char pub_sig[64];
   char pri_exp[64];
   int channel_code;
+  int multimon;
+  char fips_encrypt_key[24];
+  char fips_decrypt_key[24];
+  char fips_sign_key[20];
+  void* encrypt_fips_info;
+  void* decrypt_fips_info;
+  void* sign_fips_info;
 };
 
 /* channel */
@@ -197,6 +213,28 @@ struct xrdp_orders_state
   int text_y;
   int text_len;
   char* text_data;
+
+  int com_blt_srcidx;    /* RDP_ORDER_COMPOSITE */  /* 2 */
+  int com_blt_srcformat;                            /* 2 */
+  int com_blt_srcwidth;                             /* 2 */
+  int com_blt_srcrepeat;                            /* 1 */
+  int com_blt_srctransform[10];                     /* 40 */
+  int com_blt_mskflags;                             /* 1 */
+  int com_blt_mskidx;                               /* 2 */
+  int com_blt_mskformat;                            /* 2 */
+  int com_blt_mskwidth;                             /* 2 */
+  int com_blt_mskrepeat;                            /* 1 */
+  int com_blt_op;                                   /* 1 */
+  int com_blt_srcx;                                 /* 2 */
+  int com_blt_srcy;                                 /* 2 */
+  int com_blt_mskx;                                 /* 2 */
+  int com_blt_msky;                                 /* 2 */
+  int com_blt_dstx;                                 /* 2 */
+  int com_blt_dsty;                                 /* 2 */
+  int com_blt_width;                                /* 2 */
+  int com_blt_height;                               /* 2 */
+  int com_blt_dstformat;                            /* 2 */
+
 };
 
 /* orders */
@@ -211,6 +249,8 @@ struct xrdp_orders
   int order_count;
   int order_level; /* inc for every call to xrdp_orders_init */
   struct xrdp_orders_state orders_state;
+  void* jpeg_han;
+  int rfx_min_pixel;
 };
 
 #define PROTO_RDP_40 1
@@ -285,7 +325,7 @@ xrdp_mcs_disconnect(struct xrdp_mcs* self);
 /* xrdp_sec.c */
 struct xrdp_sec* APP_CC
 xrdp_sec_create(struct xrdp_rdp* owner, struct trans* trans, int crypt_level,
-                int channel_code);
+                int channel_code, int multimon);
 void APP_CC
 xrdp_sec_delete(struct xrdp_sec* self);
 int APP_CC
@@ -325,6 +365,8 @@ int APP_CC
 xrdp_rdp_incoming(struct xrdp_rdp* self);
 int APP_CC
 xrdp_rdp_send_demand_active(struct xrdp_rdp* self);
+int APP_CC
+xrdp_rdp_send_monitorlayout(struct xrdp_rdp* self);
 int APP_CC
 xrdp_rdp_process_confirm_active(struct xrdp_rdp* self, struct stream* s);
 int APP_CC
@@ -377,6 +419,15 @@ xrdp_orders_mem_blt(struct xrdp_orders* self, int cache_id,
                     int color_table, int x, int y, int cx, int cy,
                     int rop, int srcx, int srcy,
                     int cache_idx, struct xrdp_rect* rect);
+int APP_CC
+xrdp_orders_composite_blt(struct xrdp_orders* self, int srcidx,
+                          int srcformat, int srcwidth,
+                          int srcrepeat, int* srctransform, int mskflags,
+                          int mskidx, int mskformat, int mskwidth,
+                          int mskrepeat, int op, int srcx, int srcy,
+                          int mskx, int msky, int dstx, int dsty,
+                          int width, int height, int dstformat,
+                          struct xrdp_rect* rect);
 int APP_CC
 xrdp_orders_text(struct xrdp_orders* self,
                  int font, int flags, int mixmode,
@@ -431,10 +482,37 @@ xrdp_bitmap_compress(char* in_data, int width, int height,
                      int start_line, struct stream* temp_s,
                      int e);
 int APP_CC
-xrdp_jpeg_compress(char* in_data, int width, int height,
+xrdp_bitmap32_compress(char* in_data, int width, int height,
+                       struct stream* s, int bpp, int byte_limit,
+                       int start_line, struct stream* temp_s,
+                       int e);
+int APP_CC
+xrdp_jpeg_compress(void *handle, char* in_data, int width, int height,
                    struct stream* s, int bpp, int byte_limit,
                    int start_line, struct stream* temp_s,
                    int e, int quality);
+
+int APP_CC
+xrdp_codec_jpeg_compress(void *handle,
+                         int   format,   /* input data format */
+                         char *inp_data, /* input data */
+                         int   width,    /* width of inp_data */
+                         int   height,   /* height of inp_data */
+                         int   stride,   /* inp_data stride, in bytes*/
+                         int   x,        /* x loc in inp_data */
+                         int   y,        /* y loc in inp_data */
+                         int   cx,       /* width of area to compress */
+                         int   cy,       /* height of area to compress */
+                         int   quality,  /* higher numbers compress less */
+                         char *out_data, /* dest for jpg image */
+                         int  *io_len    /* length of out_data and on return */
+                                         /* len of compressed data */
+                         );
+
+void *APP_CC
+xrdp_jpeg_init(void);
+int APP_CC
+xrdp_jpeg_deinit(void *handle);
 
 /* xrdp_channel.c */
 struct xrdp_channel* APP_CC

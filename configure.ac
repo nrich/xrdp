@@ -1,7 +1,7 @@
 # Process this file with autoconf to produce a configure script
 
 AC_PREREQ(2.59)
-AC_INIT([xrdp], [0.6.0], [xrdp-devel@lists.sourceforge.net])
+AC_INIT([xrdp], [0.9.0], [xrdp-devel@lists.sourceforge.net])
 AC_CONFIG_HEADERS(config_ac.h:config_ac-h.in)
 AM_INIT_AUTOMAKE([1.6 foreign])
 AC_PROG_CC
@@ -31,10 +31,6 @@ AC_ARG_ENABLE(xrdpdebug, AS_HELP_STRING([--enable-xrdpdebug],
               [Build debug (default: no)]),
               [xrdpdebug=true], [xrdpdebug=false])
 AM_CONDITIONAL(XRDP_DEBUG, [test x$xrdpdebug = xtrue])
-AC_ARG_ENABLE(freerdp1, AS_HELP_STRING([--enable-freerdp1],
-              [Build freerdp1 module (default: no)]),
-              [freerdp1=true], [freerdp1=false])
-AM_CONDITIONAL(XRDP_FREERDP1, [test x$freerdp1 = xtrue])
 AC_ARG_ENABLE(neutrinordp, AS_HELP_STRING([--enable-neutrinordp],
               [Build neutrinordp module (default: no)]),
               [neutrinordp=true], [neutrinordp=false])
@@ -43,14 +39,26 @@ AC_ARG_ENABLE(jpeg, AS_HELP_STRING([--enable-jpeg],
               [Build jpeg module (default: no)]),
               [jpeg=true], [jpeg=false])
 AM_CONDITIONAL(XRDP_JPEG, [test x$jpeg = xtrue])
+AC_ARG_ENABLE(tjpeg, AS_HELP_STRING([--enable-tjpeg],
+              [Build turbo jpeg module(assumes /opt/libjpeg-turbo) (default: no)]),
+              [tjpeg=true], [tjpeg=false])
+AM_CONDITIONAL(XRDP_TJPEG, [test x$tjpeg = xtrue])
+
 AC_ARG_ENABLE(simplesound, AS_HELP_STRING([--enable-simplesound],
               [Build simple pulse audio interface (default: no)]),
               [simplesound=true], [simplesound=false])
 AM_CONDITIONAL(XRDP_SIMPLESOUND, [test x$simplesound = xtrue])
+
 AC_ARG_ENABLE(fuse, AS_HELP_STRING([--enable-fuse],
               [Build fuse(clipboard file / drive redir) (default: no)]),
               [fuse=true], [fuse=false])
 AM_CONDITIONAL(XRDP_FUSE, [test x$fuse = xtrue])
+
+AC_ARG_ENABLE(loadpulsemodules, AS_HELP_STRING([--enable-loadpulsemodules],
+              [Build code to load pulse audio modules (default: no)]),
+              [loadpulsemodules=true], [loadpulsemodules=false])
+AM_CONDITIONAL(XRDP_LOAD_PULSE_MODULES, [test x$loadpulsemodules = xtrue])
+
 AC_ARG_ENABLE(xrdpvr, AS_HELP_STRING([--enable-xrdpvr],
               [Build xrdpvr module (default: no)]),
               [xrdpvr=true], [xrdpvr=false])
@@ -83,8 +91,6 @@ then
   AC_DEFINE([USE_NOPAM],1,[Disable PAM])
 fi
 
-AS_IF( [test "x$enable_freerdp1" = "xyes"] , [PKG_CHECK_MODULES(FREERDP, freerdp >= 1.0.0)] )
-
 AS_IF( [test "x$enable_neutrinordp" = "xyes"] , [PKG_CHECK_MODULES(FREERDP, freerdp >= 1.0.0)] )
 
 # checking for libjpeg
@@ -94,12 +100,24 @@ then
     [AC_MSG_ERROR([please install libjpeg-dev or libjpeg-devel])])
 fi
 
+if ! test -z "$enable_xrdpdebug"
+then
+  CFLAGS="-g -O0"
+fi
+
 # checking for fuse
 if ! test -z "$enable_fuse"
 then
   AC_CHECK_HEADER([fuse.h], [],
     [AC_MSG_ERROR([please install libfuse-dev or fuse-devel])],
     [#define _FILE_OFFSET_BITS 64])
+fi
+
+# checking for libpulse
+if ! test -z "$enable_loadpulsemodules"
+then
+  AC_CHECK_HEADER([pulse/util.h], [],
+    [AC_MSG_ERROR([please install libpulse-dev or libpulse-devel])])
 fi
 
 # checking for libpulse libpulse-simple
@@ -128,7 +146,6 @@ AC_CONFIG_FILES([Makefile
                  libxrdp/Makefile
                  xup/Makefile
                  mc/Makefile
-                 freerdp1/Makefile
                  neutrinordp/Makefile
                  xrdp/Makefile
                  sesman/Makefile
@@ -141,8 +158,8 @@ AC_CONFIG_FILES([Makefile
                  docs/man/Makefile
                  instfiles/Makefile
                  instfiles/pam.d/Makefile
-		 instfiles/init.d/Makefile
-		 instfiles/default/Makefile
+				 instfiles/init.d/Makefile
+				 instfiles/default/Makefile
                  genkeymap/Makefile
                  xrdpapi/Makefile
                  xrdpvr/Makefile

@@ -102,7 +102,7 @@ rdpPushPixels(GCPtr pGC, PixmapPtr pBitMap, DrawablePtr pDst,
 
             if (g_do_dirty_os)
             {
-                LLOGLN(10, ("rdpPushPixels: gettig dirty"));
+                LLOGLN(10, ("rdpPushPixels: getting dirty"));
                 pDstPriv->is_dirty = 1;
                 pDirtyPriv = pDstPriv;
                 dirty_type = RDI_IMGLY;
@@ -128,7 +128,7 @@ rdpPushPixels(GCPtr pGC, PixmapPtr pBitMap, DrawablePtr pDst,
 
                 if (g_do_dirty_ons)
                 {
-                    LLOGLN(0, ("rdpPushPixels: gettig dirty"));
+                    LLOGLN(10, ("rdpPushPixels: getting dirty"));
                     g_screenPriv.is_dirty = 1;
                     pDirtyPriv = &g_screenPriv;
                     dirty_type = RDI_IMGLL;
@@ -160,7 +160,7 @@ rdpPushPixels(GCPtr pGC, PixmapPtr pBitMap, DrawablePtr pDst,
             box.x2 = box.x1 + w;
             box.y2 = box.y1 + h;
             RegionInit(&reg1, &box, 0);
-            draw_item_add_img_region(pDirtyPriv, &reg1, GXcopy, dirty_type, 15);
+            draw_item_add_img_region(pDirtyPriv, &reg1, GXcopy, dirty_type, TAG_PUSHPIXELS);
             RegionUninit(&reg1);
         }
         else if (got_id)
@@ -185,7 +185,7 @@ rdpPushPixels(GCPtr pGC, PixmapPtr pBitMap, DrawablePtr pDst,
             if (dirty_type != 0)
             {
                 RegionInit(&reg1, &box, 0);
-                draw_item_add_img_region(pDirtyPriv, &clip_reg, GXcopy, dirty_type, 15);
+                draw_item_add_img_region(pDirtyPriv, &clip_reg, GXcopy, dirty_type, TAG_PUSHPIXELS);
                 RegionUninit(&reg1);
             }
             else if (got_id)

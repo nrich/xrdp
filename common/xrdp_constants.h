@@ -25,11 +25,35 @@
 /* TCP port for Remote Desktop Protocol */
 #define TCP_PORT_RDP                   3389
 
-#define ISO_PDU_CR                     0xE0 /* Connection Request */
-#define ISO_PDU_CC                     0xD0 /* Connection Confirm */
+#define ISO_PDU_CR                     0xE0 /* X.224 Connection Request */
+#define ISO_PDU_CC                     0xD0 /* X.224 Connection Confirm */
 #define ISO_PDU_DR                     0x80 /* Disconnect Request */
 #define ISO_PDU_DT                     0xF0 /* Data */
 #define ISO_PDU_ER                     0x70 /* Error */
+
+
+/* RDP Security Negotiation codes */
+#define RDP_NEG_REQ                    0x01
+#define RDP_NEG_RSP                    0x02
+#define RDP_NEG_FAILURE                0x03
+#define RDP_CORRELATION_INFO           0x06
+/* Protocol types codes */
+#define PROTOCOL_RDP                   0x0
+#define PROTOCOL_SSL                   0x1
+#define PROTOCOL_HYBRID                0x2
+#define PROTOCOL_HYBRID_EX             0x8
+/* Negotiation packet flags */
+#define EXTENDED_CLIENT_DATA_SUPPORTED 0x1
+#define DYNVC_GFX_PROTOCOL_SUPPORTED   0x2
+#define RDP_NEGRSP_RESERVED            0x4
+/* Failure Codes */
+#define SSL_REQUIRED_BY_SERVER          0x1
+#define SSL_NOT_ALLOWED_BY_SERVER       0x2
+#define SSL_CERT_NOT_ON_SERVER          0x3
+#define INCONSISTENT_FLAGS              0x4
+#define HYBRID_REQUIRED_BY_SERVER       0x5
+#define SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER   0x6
+
 
 /* MCS PDU codes */
 #define MCS_EDRQ                       1  /* Erect Domain Request */
@@ -72,6 +96,7 @@
 #define SEC_TAG_CLI_CRYPT              0xc002
 #define SEC_TAG_CLI_CHANNELS           0xc003
 #define SEC_TAG_CLI_4                  0xc004
+#define SEC_TAG_CLI_MONITOR            0xc005
 
 #define SEC_TAG_PUBKEY                 0x0006
 #define SEC_TAG_KEYSIG                 0x0008
@@ -416,6 +441,7 @@
 #define RDP_ORDER_TRIBLT    14
 #define RDP_ORDER_POLYLINE  22
 #define RDP_ORDER_TEXT2     27
+#define RDP_ORDER_COMPOSITE 37 /* 0x25 */
 
 #define RDP_ORDER_RAW_BMPCACHE  0
 #define RDP_ORDER_COLCACHE      1
@@ -463,6 +489,10 @@
 #define WM_BUTTON4DOWN 108
 #define WM_BUTTON5UP   109
 #define WM_BUTTON5DOWN 110
+#define WM_BUTTON6UP   111
+#define WM_BUTTON6DOWN 112
+#define WM_BUTTON7UP   113
+#define WM_BUTTON7DOWN 114
 #define WM_INVALIDATE  200
 
 #define CB_ITEMCHANGE  300
@@ -558,5 +588,9 @@
 #define CMDTYPE_SET_SURFACE_BITS       0x0001
 #define CMDTYPE_FRAME_MARKER           0x0004
 #define CMDTYPE_STREAM_SURFACE_BITS    0x0006
+
+#define XRDP_MAX_BITMAP_CACHE_ID  3
+#define XRDP_MAX_BITMAP_CACHE_IDX 2000
+#define XRDP_BITMAP_CACHE_ENTRIES 2048
 
 #endif

@@ -8,7 +8,8 @@ EXTRA_DIST = \
   drdynvc.h \
   rail.h \
   sound.h \
-  xcommon.h
+  xcommon.h \
+  mlog.h
 
 EXTRA_DEFINES =
 EXTRA_INCLUDES =
@@ -23,6 +24,11 @@ endif
 if XRDP_FUSE
 EXTRA_DEFINES += -DXRDP_FUSE
 EXTRA_LIBS += -lfuse
+endif
+
+if XRDP_LOAD_PULSE_MODULES
+EXTRA_DEFINES += -DXRDP_LOAD_PULSE_MODULES
+EXTRA_LIBS += -lpulse 
 endif
 
 AM_CFLAGS = \
@@ -51,7 +57,8 @@ xrdp_chansrv_SOURCES = \
   xcommon.c \
   drdynvc.c \
   chansrv_fuse.c \
-  irp.c
+  irp.c \
+  fifo.c
 
 xrdp_chansrv_LDFLAGS = \
   $(EXTRA_FLAGS)
@@ -59,5 +66,5 @@ xrdp_chansrv_LDFLAGS = \
 xrdp_chansrv_LDADD = \
   -L/usr/X11R6/lib \
   $(top_builddir)/common/libcommon.la \
-  -lX11 -lXfixes \
+  -lX11 -lXfixes -lXrandr \
   $(EXTRA_LIBS)

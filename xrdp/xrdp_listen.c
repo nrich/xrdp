@@ -66,6 +66,10 @@ xrdp_listen_create(void)
     {
         log_message(LOG_LEVEL_ERROR,"xrdp_listen_create: trans_create failed");
     }
+    else
+    {
+        self->listen_trans->is_term = g_is_term;
+    }
 
     return self;
 }
@@ -199,19 +203,31 @@ xrdp_listen_get_port_address(char *port, int port_bytes,
                     if (g_strcasecmp(val, "fork") == 0)
                     {
                         val = (char *)list_get_item(values, index);
-                        startup_param->fork = text2bool(val);
+                        startup_param->fork = g_text2bool(val);
                     }
 
                     if (g_strcasecmp(val, "tcp_nodelay") == 0)
                     {
                         val = (char *)list_get_item(values, index);
-                        *tcp_nodelay = text2bool(val);
+                        *tcp_nodelay = g_text2bool(val);
                     }
 
                     if (g_strcasecmp(val, "tcp_keepalive") == 0)
                     {
                         val = (char *)list_get_item(values, index);
-                        *tcp_keepalive = text2bool(val);
+                        *tcp_keepalive = g_text2bool(val);
+                    }
+
+                    if (g_strcasecmp(val, "tcp_send_buffer_bytes") == 0)
+                    {
+                        val = (char *)list_get_item(values, index);
+                        startup_param->send_buffer_bytes = g_atoi(val);
+                    }
+
+                    if (g_strcasecmp(val, "tcp_recv_buffer_bytes") == 0)
+                    {
+                        val = (char *)list_get_item(values, index);
+                        startup_param->recv_buffer_bytes = g_atoi(val);
                     }
                 }
             }
@@ -318,6 +334,7 @@ xrdp_listen_main_loop(struct xrdp_listen *self)
     tbus done_obj;
     int tcp_nodelay;
     int tcp_keepalive;
+    int bytes;
 
     self->status = 1;
 
@@ -349,6 +366,54 @@ xrdp_listen_main_loop(struct xrdp_listen *self)
             if (g_tcp_set_keepalive(self->listen_trans->sck))
             {
                 log_message(LOG_LEVEL_ERROR,"Error setting tcp_keepalive");
+            }
+        }
+
+        if (self->startup_params->send_buffer_bytes > 0)
+        {
+            bytes = self->startup_params->send_buffer_bytes;
+            log_message(LOG_LEVEL_INFO, "setting send buffer to %d bytes",
+                        bytes);
+            if (g_sck_set_send_buffer_bytes(self->listen_trans->sck,
+                                            bytes) != 0)
+            {
+                log_message(LOG_LEVEL_ERROR, "error setting send buffer");
+            }
+            else
+            {
+                if (g_sck_get_send_buffer_bytes(self->listen_trans->sck,
+                                                &bytes) != 0)
+                {
+                    log_message(LOG_LEVEL_ERROR, "error getting send buffer");
+                }
+                else
+                {
+                    log_message(LOG_LEVEL_INFO, "send buffer set to %d bytes", bytes);
+                }
+            }
+        }
+
+        if (self->startup_params->recv_buffer_bytes > 0)
+        {
+            bytes = self->startup_params->recv_buffer_bytes;
+            log_message(LOG_LEVEL_INFO, "setting recv buffer to %d bytes",
+                        bytes);
+            if (g_sck_set_recv_buffer_bytes(self->listen_trans->sck,
+                                            bytes) != 0)
+            {
+                log_message(LOG_LEVEL_ERROR, "error setting recv buffer");
+            }
+            else
+            {
+                if (g_sck_get_recv_buffer_bytes(self->listen_trans->sck,
+                                                &bytes) != 0)
+                {
+                    log_message(LOG_LEVEL_ERROR, "error getting recv buffer");
+                }
+                else
+                {
+                    log_message(LOG_LEVEL_INFO, "recv buffer set to %d bytes", bytes);
+                }
             }
         }
 
