@@ -1353,7 +1353,9 @@ get_log_path()
     log_path = g_getenv("CHANSRV_LOG_PATH");
     if (log_path == 0)
     {
-        log_path = g_getenv("HOME");
+        /* this has trouble with AFS */
+        /* log_path = g_getenv("HOME"); */
+        log_path = "/tmp";
     }
     return log_path;
 }
