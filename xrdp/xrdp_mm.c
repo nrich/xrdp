@@ -468,8 +468,6 @@ xrdp_mm_setup_mod2(struct xrdp_mm *self)
             }
             else if (self->code == 10) /* X11rdp */
             {
-                use_uds = 0;
-
                 if (xrdp_mm_get_value(self, "ip", text, 255) == 0)
                 {
                     if (g_strcmp(text, "127.0.0.1") != 0)
