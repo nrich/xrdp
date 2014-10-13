@@ -43,6 +43,7 @@ AC_ARG_ENABLE(tjpeg, AS_HELP_STRING([--enable-tjpeg],
               [Build turbo jpeg module(assumes /opt/libjpeg-turbo) (default: no)]),
               [tjpeg=true], [tjpeg=false])
 AM_CONDITIONAL(XRDP_TJPEG, [test x$tjpeg = xtrue])
+
 AC_ARG_ENABLE(nxvnc, AS_HELP_STRING([--enable-nxvnc],
               [Build nxvnc module (default: no)]),
               [nxvnc=true], [nxvnc=false])
