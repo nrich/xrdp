@@ -18,8 +18,10 @@
  * libvnc
  */
 
-#include "vnc.h"
+#include "nx-vnc.h"
 #include "log.h"
+
+#include <stdio.h>
 
 #define NX_SSH_TYPE_DSS 1
 #define NX_SSH_TYPE_RSA 2
@@ -38,19 +40,25 @@ static const char nx_default_private_key[] = "-----BEGIN DSA PRIVATE KEY-----\n"
                 "-----END DSA PRIVATE KEY-----\n";
 
 
-static void session_send_command(ssh_session session, ssh_channel channel, const char *cmd) {
-    channel_write(channel, cmd, strlen(cmd));
+static void session_send_command(struct nxvnc *v, const char *cmd) {
+    ssh_session session = v->session;
+    ssh_channel channel = v->channel;
+
+    channel_write(channel, cmd, g_strlen(cmd));
 
     ssh_set_fd_towrite(session);
     channel_write(channel, "\n", 1);
 }
 
-static int get_response(ssh_session session, ssh_channel channel, int timeout_in_seconds, char *output) {
+static int get_response(struct nxvnc *v, int timeout_in_seconds, char *output) {
     struct timeval timeout;
     ssh_channel ch[2];
     ssh_buffer buffer;
     int len;
     int is_stderr;
+
+    ssh_session session = v->session;
+    ssh_channel channel = v->channel;
 
     timeout.tv_sec = timeout_in_seconds;
     timeout.tv_usec = 0;
@@ -78,53 +86,112 @@ static int get_response(ssh_session session, ssh_channel channel, int timeout_in
         return 0;
     }
     if (len > 0) {
-        strncat(output, buffer_get(buffer), len);
+        g_strncat(output, buffer_get(buffer), len);
     }
 
     buffer_free(buffer);
     return len > 0;
 }
 
-int open_tunnel(struct vnc *v, int port) {
-    int sock;
-    int sockopt = 1;
-    struct sockaddr_in sin;
+static int get_expected_response(struct nxvnc *v, int expected_code) {
+    char output[1024];
+    int response_code = -1;
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        fprintf(stderr, "Failed to create socket\n");
-        exit(-1);
+    output[0] = '\0';
+    while (get_response(v, 2, output)) {
     }
 
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(sockopt));
+    if (sscanf(output, "NX> %i ", &response_code) > 0) {
+    } 
 
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(port);
-    sin.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-    if (bind(sock, (struct sockaddr *) &sin, sizeof(sin))) {
-        fprintf(stderr, "Failed to bind socket\n");
-        close(sock);
-        exit(-1);
-    }
-
-    if (listen(sock, 1)) {
-        fprintf(stderr, "Failed to listen on socket\n");
-        close(sock);
-        exit(-1);
-    }
-
-    server_sock = sock;
-
-    if (pthread_create(&thread, NULL, tunnel, NULL)) {
-        fprintf(stderr, "Failed to create thread\n");
-        close(sock);
-        exit(-1);
-    }
-
-    return 1;
+    return response_code == expected_code;
 }
 
+static int get_session(struct nxvnc *v) {
+    char output[10240];
+    int response_code = -1;
+    char *curLine;
+
+    output[0] = '\0';
+    while (get_response(v, 10, output)) {
+    }
+
+    curLine = output;
+    while (curLine) {
+        char *nextLine = g_strchr(curLine, '\n');
+        int display;
+        char username[64];
+        char ip[64];
+        char sessiontoken[33];
+
+        if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
+            break;
+        } 
+
+        if (nextLine)
+            *nextLine = '\0';
+
+        if (sscanf(curLine, "%d %s %s %s", &display, username, ip, sessiontoken) > 0) {
+            //v->server_msg(v, "Found session name %s", sessiontoken);
+
+            v->display = display;
+            v->sessiontoken = g_strdup(sessiontoken);
+            break;
+        }
+
+        curLine = nextLine ? (nextLine + 1) : NULL;
+    }
+
+    return response_code == 105;
+}
+
+int get_session_info(struct nxvnc *v) {
+    char output[10240];
+    int response_code = -1;
+    char *curLine;
+
+    ssh_session session = v->session;
+    ssh_channel channel = v->channel;
+
+    output[0] = '\0';
+    while (get_response(v, 10, output)) {
+    }
+
+    curLine = output;
+    while (curLine) {
+        char cookie[33];
+        char sessionid[128];
+
+        char *nextLine = g_strchr(curLine, '\n');
+        int status;
+
+        if (nextLine)
+            *nextLine = '\0';
+
+        if (sscanf(curLine, "NX> %i ", &status) > 0) {
+            if (status == 700) {
+                if (sscanf(curLine, "NX> 700 Session id: %s", sessionid) > 0) {
+                    //v->server_msg(v, "Found session ID %s", sessionid);
+                    v->sessionid = g_strdup(sessionid);
+                }
+            } else if (status == 701) {
+                if (sscanf(curLine, "NX> 701 Proxy cookie: %32s", cookie) > 0) {
+                    //v->server_msg(v, "Found session cookie %s", cookie);
+                    v->cookie = g_strdup(cookie);
+                }
+            } else if (status == 105) {
+                response_code = status;
+            }
+        }
+
+        if (nextLine)
+            *nextLine = '\n';
+
+        curLine = nextLine ? (nextLine + 1) : NULL;
+    }
+
+    return response_code == 105;
+}
 
 /******************************************************************************/
 /* taken from vncauth.c */
@@ -144,7 +211,7 @@ rfbEncryptBytes(char *bytes, char *passwd)
 /******************************************************************************/
 /* returns error */
 int DEFAULT_CC
-lib_recv(struct vnc *v, char *data, int len)
+lib_recv(struct nxvnc *v, char *data, int len)
 {
     int rcvd;
 
@@ -192,7 +259,7 @@ lib_recv(struct vnc *v, char *data, int len)
 /*****************************************************************************/
 /* returns error */
 int DEFAULT_CC
-lib_send(struct vnc *v, char *data, int len)
+lib_send(struct nxvnc *v, char *data, int len)
 {
     int sent;
 
@@ -238,7 +305,7 @@ lib_send(struct vnc *v, char *data, int len)
 
 /******************************************************************************/
 static int DEFAULT_CC
-lib_process_channel_data(struct vnc *v, int chanid, int flags, int size,
+lib_process_channel_data(struct nxvnc *v, int chanid, int flags, int size,
                          struct stream *s, int total_size)
 {
     int type;
@@ -340,7 +407,7 @@ lib_process_channel_data(struct vnc *v, int chanid, int flags, int size,
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_mod_event(struct vnc *v, int msg, long param1, long param2,
+lib_mod_event(struct nxvnc *v, int msg, long param1, long param2,
               long param3, long param4)
 {
     struct stream *s;
@@ -665,7 +732,7 @@ make_color(int r, int g, int b, int bpp)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_framebuffer_update(struct vnc *v)
+lib_framebuffer_update(struct nxvnc *v)
 {
     char *data;
     char *d1;
@@ -849,7 +916,7 @@ lib_framebuffer_update(struct vnc *v)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_clip_data(struct vnc *v)
+lib_clip_data(struct nxvnc *v)
 {
     struct stream *s;
     struct stream *out_s;
@@ -900,7 +967,7 @@ lib_clip_data(struct vnc *v)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_palette_update(struct vnc *v)
+lib_palette_update(struct nxvnc *v)
 {
     struct stream *s;
     int first_color;
@@ -956,7 +1023,7 @@ lib_palette_update(struct vnc *v)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_bell_trigger(struct vnc *v)
+lib_bell_trigger(struct nxvnc *v)
 {
     struct stream *s;
     int error;
@@ -967,7 +1034,7 @@ lib_bell_trigger(struct vnc *v)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_mod_signal(struct vnc *v)
+lib_mod_signal(struct nxvnc *v)
 {
     char type;
     int error;
@@ -1006,7 +1073,7 @@ lib_mod_signal(struct vnc *v)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_mod_start(struct vnc *v, int w, int h, int bpp)
+lib_mod_start(struct nxvnc *v, int w, int h, int bpp)
 {
     v->server_begin_update(v);
     v->server_set_fgcolor(v, 0);
@@ -1020,7 +1087,7 @@ lib_mod_start(struct vnc *v, int w, int h, int bpp)
 
 /******************************************************************************/
 static int APP_CC
-lib_open_clip_channel(struct vnc *v)
+lib_open_clip_channel(struct nxvnc *v)
 {
     char init_data[12] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -1039,7 +1106,7 @@ lib_open_clip_channel(struct vnc *v)
   return error
 */
 int DEFAULT_CC
-lib_mod_connect(struct vnc *v)
+lib_mod_connect(struct nxvnc *v)
 {
     char cursor_data[32 * (32 * 3)];
     char cursor_mask[32 * (32 / 8)];
@@ -1055,187 +1122,154 @@ lib_mod_connect(struct vnc *v)
     ssh_private_key privkey;
     ssh_public_key pubkey;
     ssh_string pubkeystr;
-    char buffer[256];
     unsigned int nbytes;
-    char output[10240];
-    char cookie[33];
-    char sessionid[128];
-    char sessionname[32];
-    char sessioncommand[1024];
-    const char *curLine;
     pid_t pid;
     char tmpfile[L_tmpnam + 1];
 
     v->server_msg(v, "NX started connecting", 0);
-    output[0] = '\0';
 
     v->session = ssh_new();
-    if (session == NULL) {
-        v->server_msg(v, "Failed to create SSH session");
+    if (v->session == NULL) {
+        v->server_msg(v, "Failed to create SSH session", 1);
         return 1;
     }
         
-    ssh_options_set(session, SSH_OPTIONS_HOST, "localhost");
-    ssh_options_set(session, SSH_OPTIONS_USER, "nx");
+    ssh_options_set(v->session, SSH_OPTIONS_HOST, "localhost");
+    ssh_options_set(v->session, SSH_OPTIONS_USER, "nx");
 
     if (tmpnam(tmpfile) == NULL) {
-        v->server_msg(v, "Failed to create temporary private key file");
+        v->server_msg(v, "Failed to create temporary private key file", 1);
         return 1;
     } else {
         FILE *keyfile = fopen(tmpfile, "w");
         size_t keylen = sizeof(nx_default_private_key);
         if (!keyfile) {
-            v->server_msg(v, "Failed to open temporary private key file");
+            v->server_msg(v, "Failed to open temporary private key file", 1);
             return 1;
         }
 
         if (fwrite(nx_default_private_key, keylen, 1, keyfile) != keylen) {
-            v->server_msg(v, "Failed to write to temporary private key file");
+            v->server_msg(v, "Failed to write to temporary private key file", 1);
             return 1;
         }
 
         fclose(keyfile);
 
-        privkey = privatekey_from_file(session, keyfile, NX_SSH_TYPE_DSS, "");
+        privkey = privatekey_from_file(v->session, tmpfile, NX_SSH_TYPE_DSS, "");
         pubkeystr = publickey_to_string(pubkey);
         publickey_free(pubkey);
 
         unlink(tmpfile);
     }
 
-    rc = ssh_connect(session);
+    rc = ssh_connect(v->session);
     if (rc != SSH_OK) {
-        v->server_msg(v, "Failed to connect to SSH server %s", ssh_get_error(session));
-        ssh_free(session);
+        //v->server_msg(v, "Failed to connect to SSH server %s", ssh_get_error(session));
+        ssh_free(v->session);
         return 1;
     }
     
-    rc = ssh_userauth_pubkey(session, NULL, pubkeystr, privkey);
+    rc = ssh_userauth_pubkey(v->session, NULL, pubkeystr, privkey);
 
     string_free(pubkeystr);
     privatekey_free(privkey);
 
     if (rc != SSH_AUTH_SUCCESS) {
-        v->server_msg(v, "Failed to auth to SSH server %s", ssh_get_error(session));
-        ssh_free(session);
+        //v->server_msg(v, "Failed to auth to SSH server %s", ssh_get_error(session));
+        ssh_free(v->session);
         return 1;
     }
 
-    channel = ssh_channel_new(session);
-    if (channel == NULL) {
-        v->server_msg(v, "Error creating channel %s", ssh_get_error(session));
-        ssh_free(session);
+    v->channel = ssh_channel_new(v->session);
+    if (v->channel == NULL) {
+        //v->server_msg(v, "Error creating channel %s", ssh_get_error(session));
+        ssh_free(v->session);
         return 1;
     }
 
-    rc = ssh_channel_open_session(channel);
+    rc = ssh_channel_open_session(v->channel);
     if (rc != SSH_OK) {
-        ssh_channel_free(channel);
-        v->server_msg(v, "Error opening channel: %s\n", ssh_get_error(session));
+        ssh_channel_free(v->channel);
+        //v->server_msg(v, "Error opening channel: %s\n", ssh_get_error(session));
         return 1;
     }
 
-    channel_request_shell(channel);
+    channel_request_shell(v->channel);
 
-    session_send_command(session, channel, "HELLO NXCLIENT - Version 3.5.0");
-    while (get_response(session, channel, 1, output)) {
-    }
-    output[0] = '\0';
-
-
-    session_send_command(session, channel, "SET SHELL_MODE SHELL");
-    while (get_response(session, channel, 1, output)) {
-    }
-    output[0] = '\0';
-
-    session_send_command(session, channel, "SET AUTH_MODE PASSWORD");
-    while (get_response(session, channel, 1, output)) {
-    }
-    output[0] = '\0';
-
-
-    session_send_command(session, channel, "login");
-    while (get_response(session, channel, 1, output)) {
-    }
-    output[0] = '\0';
-
-    session_send_command(session, channel, "nrich");
-    while (get_response(session, channel, 1, output)) {
-    }
-    output[0] = '\0';
-
-    session_send_command(session, channel, "ad");
-    while (get_response(session, channel, 1, output)) {
-    }
-    output[0] = '\0';
-
-    session_send_command(session, channel, "listsession");
-    while (get_response(session, channel, 1, output)) {
+    session_send_command(v, "HELLO NXCLIENT - Version 3.5.0");
+    if (!get_expected_response(v, 105)) {
+        v->server_msg(v, "Hello to NX server failed", 1);
+        return 1;
     }
 
-    curLine = output;
-    while (curLine) {
-        char *nextLine = strchr(curLine, '\n');
-        int status;
-        int portnum;
-        char username[64];
-        char ip[64];
-
-        if (nextLine)
-            *nextLine = '\0';
-
-        if (sscanf(curLine, "%d %s %s %s %s", &portnum, username, ip, sessionname) > 0) {
-            v->server_msg(v, "Found session name %s", sessionname);
-        }
-
-        if (nextLine)
-            *nextLine = '\n';
-
-        curLine = nextLine ? (nextLine + 1) : NULL;
+    session_send_command(v, "SET SHELL_MODE SHELL");
+    if (!get_expected_response(v, 105)) {
+        v->server_msg(v, "Set shell mode failed", 1);
+        return 1;
     }
 
-    output[0] = '\0';
-
-    sprintf(sessioncommand, "restoresession --session=\"nrich\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"800x600\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"1\" --render=\"0\" --backingstore=\"1\"", sessionname);
-    session_send_command(session, channel, sessioncommand);
-
-    while (get_response(session, channel, 10, output)) {
+    session_send_command(v, "SET AUTH_MODE PASSWORD");
+    if (!get_expected_response(v, 105)) {
+        v->server_msg(v, "Set auth mode failed", 1);
+        return 1;
     }
 
-    curLine = output;
-    while (curLine) {
-        char *nextLine = strchr(curLine, '\n');
-        int status;
-
-        if (nextLine)
-            *nextLine = '\0';
-
-        if (sscanf(curLine, "NX> %i ", &status) > 0) {
-           // printf("Got status %i\n", status);
-            if (status == 700) {
-                if (sscanf(curLine, "NX> 700 Session id: %s", sessionid) > 0) {
-                    v->server_msg(v, "Found session ID %s", sessionid);
-                }
-            } else if (status == 701) {
-                if (sscanf(curLine, "NX> 701 Proxy cookie: %32s", cookie) > 0) {
-                    v->server_msg(v, "Found session cookie %s", cookie);
-                }
-            }
-        }
-
-        if (nextLine)
-            *nextLine = '\n';
-
-        curLine = nextLine ? (nextLine + 1) : NULL;
+    session_send_command(v, "login");
+    if (!get_expected_response(v, 101)) {
+        v->server_msg(v, "Login command failed", 1);
+        return 1;
     }
 
-    session_send_command(session, channel, "bye");
-    while (get_response(session, channel, 10, output)) {
+    session_send_command(v, v->username);
+    if (!get_expected_response(v, 102)) {
+        v->server_msg(v, "Sending sername failed", 1);
+        return 1;
     }
-    output[0] = '\0';
 
-    open_tunnel(v, 7002);
+    session_send_command(v, v->password);
+    if (!get_expected_response(v, 105)) {
+        v->server_msg(v, "Authentication failed", 1);
+        return 1;
+    }
 
+    session_send_command(v, "listsession");
+    if (!get_session(v)) {
+        v->server_msg(v, "Session listing failed", 1);
+        return 1;
+    } 
+
+
+    if (!v->sessiontoken) {
+
+    } else {
+        char sessioncommand[1024];
+
+        sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%d\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\"", v->username, v->sessiontoken, v->server_width, v->server_height);
+        session_send_command(v, sessioncommand);
+
+        get_session_info(v);
+    }
+
+
+    session_send_command(v, "bye");
+    if (!get_expected_response(v, 105)) {
+        v->server_msg(v, "Goodbye failed", 1);
+        return 1;
+    }
+
+    pid = fork();
+    if (pid > 0) {
+        v->server_msg(v, "Forked NXProxy", 1);
+    } else if (pid == 0) {
+        char sessionstash[512];
+        sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", v->username, v->cookie, v->sessionid, "127.0.0.1", v->display + 6000);
+        execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+    } else {
+        v->server_msg(v, "NXProxy fork failed", 1);
+        return 1;
+    }
+
+    /* begin VNC connection */
     v->server_msg(v, "VNC started connecting", 0);
     check_sec_result = 1;
 
@@ -1576,7 +1610,7 @@ lib_mod_connect(struct vnc *v)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_mod_end(struct vnc *v)
+lib_mod_end(struct nxvnc *v)
 {
     if (v->vnc_desktop != 0)
     {
@@ -1590,7 +1624,7 @@ lib_mod_end(struct vnc *v)
 
 /******************************************************************************/
 int DEFAULT_CC
-lib_mod_set_param(struct vnc *v, char *name, char *value)
+lib_mod_set_param(struct nxvnc *v, char *name, char *value)
 {
     if (g_strcasecmp(name, "username") == 0)
     {
@@ -1619,7 +1653,7 @@ lib_mod_set_param(struct vnc *v, char *name, char *value)
 /******************************************************************************/
 /* return error */
 int DEFAULT_CC
-lib_mod_get_wait_objs(struct vnc *v, tbus *read_objs, int *rcount,
+lib_mod_get_wait_objs(struct nxvnc *v, tbus *read_objs, int *rcount,
                       tbus *write_objs, int *wcount, int *timeout)
 {
     int i;
@@ -1641,7 +1675,7 @@ lib_mod_get_wait_objs(struct vnc *v, tbus *read_objs, int *rcount,
 /******************************************************************************/
 /* return error */
 int DEFAULT_CC
-lib_mod_check_wait_objs(struct vnc *v)
+lib_mod_check_wait_objs(struct nxvnc *v)
 {
     int rv;
 
@@ -1662,14 +1696,14 @@ lib_mod_check_wait_objs(struct vnc *v)
 }
 
 /******************************************************************************/
-struct vnc *EXPORT_CC
+struct nxvnc *EXPORT_CC
 mod_init(void)
 {
-    struct vnc *v;
+    struct nxvnc *v;
 
-    v = (struct vnc *)g_malloc(sizeof(struct vnc), 1);
+    v = (struct nxvnc *)g_malloc(sizeof(struct nxvnc), 1);
     /* set client functions */
-    v->size = sizeof(struct vnc);
+    v->size = sizeof(struct nxvnc);
     v->version = CURRENT_MOD_VER;
     v->handle = (long)v;
     v->mod_connect = lib_mod_connect;
@@ -1681,18 +1715,14 @@ mod_init(void)
     v->mod_get_wait_objs = lib_mod_get_wait_objs;
     v->mod_check_wait_objs = lib_mod_check_wait_objs;
 
-    /* nx data init */
-    v->running = 0;
-    v->server_sock = -1;
-
     return v;
 }
 
 /******************************************************************************/
 int EXPORT_CC
-mod_exit(struct vnc *v)
+mod_exit(struct nxvnc *v)
 {
-    log_message(LOG_LEVEL_DEBUG, "VNC mod_exit");
+    log_message(LOG_LEVEL_DEBUG, "NX-VNC mod_exit");
 
     if (v == 0)
     {

@@ -10,9 +10,9 @@ INCLUDES = \
   -I$(top_srcdir)/common
 
 lib_LTLIBRARIES = \
-  libnx-vnc.la
+  libnx_vnc.la
 
-libnx-vnc_la_SOURCES = nx-vnc.c
+libnx_vnc_la_SOURCES = nx-vnc.c
 
-libnx-vnc_la_LIBADD = \
+libnx_vnc_la_LIBADD = \
   $(top_builddir)/common/libcommon.la

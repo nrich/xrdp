@@ -12,10 +12,17 @@ else
 XRDPVRDIR =
 endif
 
+if XRDP_NXVNC
+XRDPNXVNCDIR = nx-vnc
+else
+XRDPNXVNCDIR = 
+endif
+
 SUBDIRS = \
   common \
   vnc \
   rdp \
+  $(XRDPNXVNCDIR) \
   xup \
   mc \
   $(NEUTRINORDPDIR) \

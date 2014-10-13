@@ -43,6 +43,10 @@ AC_ARG_ENABLE(tjpeg, AS_HELP_STRING([--enable-tjpeg],
               [Build turbo jpeg module(assumes /opt/libjpeg-turbo) (default: no)]),
               [tjpeg=true], [tjpeg=false])
 AM_CONDITIONAL(XRDP_TJPEG, [test x$tjpeg = xtrue])
+AC_ARG_ENABLE(nxvnc, AS_HELP_STRING([--enable-nxvnc],
+              [Build nxvnc module (default: no)]),
+              [nxvnc=true], [nxvnc=false])
+AM_CONDITIONAL(XRDP_NXVNC, [test x$nxvnc = xtrue])
 
 AC_ARG_ENABLE(simplesound, AS_HELP_STRING([--enable-simplesound],
               [Build simple pulse audio interface (default: no)]),
@@ -105,6 +109,13 @@ then
   CFLAGS="-g -O0"
 fi
 
+# checking for libssh
+if ! test -z "$enable_nxvnc"
+then
+  AC_CHECK_HEADER([libssh/libssh.h], [],
+    [AC_MSG_ERROR([please install libssh-dev or libssh-devel])])
+fi
+
 # checking for fuse
 if ! test -z "$enable_fuse"
 then
@@ -143,6 +154,7 @@ AC_CONFIG_FILES([Makefile
                  common/Makefile
                  vnc/Makefile
                  rdp/Makefile
+                 nx-vnc/Makefile
                  libxrdp/Makefile
                  xup/Makefile
                  mc/Makefile
