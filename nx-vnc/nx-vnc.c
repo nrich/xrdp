@@ -22,6 +22,7 @@
 #include "log.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #define NX_SSH_TYPE_DSS 1
 #define NX_SSH_TYPE_RSA 2
@@ -86,7 +87,7 @@ static int get_response(struct nxvnc *v, int timeout_in_seconds, char *output) {
         return 0;
     }
     if (len > 0) {
-        g_strncat(output, buffer_get(buffer), len);
+        strncat(output, buffer_get(buffer), len);
     }
 
     buffer_free(buffer);
