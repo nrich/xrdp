@@ -1157,6 +1157,7 @@ lib_mod_connect(struct nxvnc *v)
         fclose(keyfile);
 
         privkey = privatekey_from_file(v->session, tmpfile, NX_SSH_TYPE_DSS, "");
+        pubkey = publickey_from_privatekey(privkey);
         pubkeystr = publickey_to_string(pubkey);
         publickey_free(pubkey);
 
