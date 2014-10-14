@@ -127,4 +127,7 @@ struct nxvnc
   char *sessionid;
   char *sessiontoken;
   char *cookie;
+
+  /* nxproxy child process */
+  pid_t nxproxy;
 };
