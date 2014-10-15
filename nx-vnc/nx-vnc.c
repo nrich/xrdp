@@ -112,7 +112,7 @@ static int get_expected_response(struct nxvnc *v, int expected_code) {
     return response_code == expected_code;
 }
 
-static int get_session(struct nxvnc *v) {
+static int get_session(struct nxvnc *v, char *ip) {
     char output[10240];
     int response_code = -1;
     char *curLine;
@@ -132,7 +132,6 @@ static int get_session(struct nxvnc *v) {
         char *nextLine = g_strchr(curLine, '\n');
         int display;
         char username[64];
-        char ip[64];
         char sessiontoken[33];
 
         if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
@@ -170,7 +169,7 @@ int get_session_info(struct nxvnc *v) {
     output[0] = '\0';
     while (count--) {
         get_response(v, 1, output);
-	usleep(500000);
+        usleep(500000);
     }
 
     v->server_msg(v, "Done loop", 1);
@@ -211,6 +210,41 @@ int get_session_info(struct nxvnc *v) {
 
     return response_code == 105;
 }
+
+static int get_expected_response_long(struct nxvnc *v, int expected_code) {
+    char output[1024];
+    int response_code = -1;
+    char *curLine;
+    int count = 10;
+
+    output[0] = '\0';
+    while (count--) {
+        get_response(v, 1, output);
+	v->server_msg(v, "Looped in get_expected_response", 1);
+        usleep(500000);
+    }
+
+    v->server_msg(v, "Done loop", 1);
+    v->server_msg(v, output, 1);
+
+    curLine = output;
+    while (curLine) {
+        char *nextLine = g_strchr(curLine, '\n');
+
+        if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
+	    if (response_code == expected_code)
+                break;
+        } 
+
+        if (nextLine)
+            *nextLine = '\0';
+
+        curLine = nextLine ? (nextLine + 1) : NULL;
+    }
+
+    return response_code == expected_code;
+}
+
 
 /******************************************************************************/
 /* taken from vncauth.c */
@@ -1144,6 +1178,7 @@ lib_mod_connect(struct nxvnc *v)
     unsigned int nbytes;
     char tmpfile[L_tmpnam + 1];
     char pidfile[128];
+    char ip[16];
 
     v->server_msg(v, "NX started connecting", 0);
 
@@ -1283,7 +1318,7 @@ lib_mod_connect(struct nxvnc *v)
     }
 
     session_send_command(v, "listsession");
-    if (!get_session(v)) {
+    if (!get_session(v, ip)) {
         v->server_msg(v, "Session listing failed", 1);
         return 1;
     } else {
@@ -1293,15 +1328,56 @@ lib_mod_connect(struct nxvnc *v)
     if (!v->sessiontoken) {
 	v->server_msg(v, "Got no session", 0);
     } else {
-        char sessioncommand[1024];
+	int do_restore = 1;
 
-        sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%d\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\"", v->username, v->sessiontoken, v->server_width, v->server_height);
-        session_send_command(v, sessioncommand);
+	if (ip[0] == '-') {
+            /* no session */
+	    do_restore = 1;
+	} else if (g_strcmp(ip, "127.0.0.1") == 0) {
+            /* local session already running */
+	    v->server_msg(v, "NXProxy already running", 0);
+	    do_restore = 0;
+	} else {
+            /* another remote session */
+	    char disconnectcommand[1024];
 
-        get_session_info(v);
+	    sprintf(disconnectcommand, "disconnect --sessionid=\"%s\"", v->sessiontoken);
+	    session_send_command(v, disconnectcommand);
+	    if (!get_expected_response_long(v, 105)) {
+		v->server_msg(v, "Disconnect failed", 1);
+		return 1;
+	    } else {
+		v->server_msg(v, "Disconnect", 0);
+	    }
+
+	    do_restore = 1;
+	}
+
+	if (do_restore) {
+	    char sessioncommand[1024];
+
+	    sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\"", v->username, v->sessiontoken, v->server_width, v->server_height);
+	    session_send_command(v, sessioncommand);
+	    get_session_info(v);
+
+	    v->nxproxy = fork();
+	    if (v->nxproxy > 0) {
+		    v->server_msg(v, "Forked NXProxy", 1);
+	    } else if (v->nxproxy == 0) {
+		    char sessionstash[512];
+		    sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", v->username, v->cookie, v->sessionid, "127.0.0.1", v->display);
+		    v->server_msg(v, sessionstash, 1);
+		    //execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+		    execl("/usr/bin/xvfb-run", "/usr/bin/xvfb-run", "-s", "-screen 0 1024x768x24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+	    } else {
+		    v->server_msg(v, "NXProxy fork failed", 1);
+		    return 1;
+	    }
+	}
     }
 
 
+/*
     session_send_command(v, "bye");
     if (!get_expected_response(v, 999)) {
         v->server_msg(v, "Goodbye failed", 1);
@@ -1309,20 +1385,7 @@ lib_mod_connect(struct nxvnc *v)
     } else {
         v->server_msg(v, "Sent goodbye", 0);
     }
-
-    v->nxproxy = fork();
-    if (v->nxproxy > 0) {
-        v->server_msg(v, "Forked NXProxy", 1);
-    } else if (v->nxproxy == 0) {
-        char sessionstash[512];
-        sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", v->username, v->cookie, v->sessionid, "127.0.0.1", v->display);
-	v->server_msg(v, sessionstash, 1);
-        //execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
-	execl("/usr/bin/xvfb-run", "/usr/bin/xvfb-run", "-s", "-screen 0 1024x768x24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
-    } else {
-        v->server_msg(v, "NXProxy fork failed", 1);
-        return 1;
-    }
+*/
 
     /* begin VNC connection */
     v->server_msg(v, "VNC started connecting", 0);
@@ -1795,8 +1858,20 @@ mod_exit(struct nxvnc *v)
     ssh_free(v->session);
 */
 
-    if (v->nxproxy > 1) {
-	//kill(v->nxproxy, SIGTERM);
+    if (v->sessiontoken) {
+	/*
+        char disconnectcommand[1024];
+
+        sprintf(disconnectcommand, "disconnect --sessionid=\"%s\"", v->sessiontoken);
+
+        session_send_command(v, disconnectcommand);
+	if (!get_expected_response(v, 900)) {
+	    v->server_msg(v, "Disconnect failed", 1);
+	    return 1;
+	} else {
+	    v->server_msg(v, "Disconnect", 0);
+	}
+	*/
     }
 
     g_delete_wait_obj_from_socket(v->sck_obj);
