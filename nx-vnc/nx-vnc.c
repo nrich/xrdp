@@ -54,7 +54,49 @@ static void session_send_command(struct nxvnc *v, const char *cmd) {
     channel_write(channel, "\n", 1);
 }
 
-static int get_response(struct nxvnc *v, int timeout_in_seconds, char *output) {
+static int get_response_line(struct nxvnc *v, int timeout_in_seconds, char *output) {
+    struct timeval timeout;
+    ssh_channel ch[2];
+    ssh_buffer buffer;
+    int len;
+    int is_stderr;
+
+    timeout.tv_sec = timeout_in_seconds;
+    timeout.tv_usec = 0;
+    ch[0] = v->channel;
+    ch[1] = NULL;
+    channel_select(ch, NULL, NULL, &timeout);
+
+    is_stderr = 0;
+    while (is_stderr <= 1) {
+        len = channel_poll(v->channel, is_stderr);
+        if (len == SSH_ERROR)
+        {
+            return 0;
+        }
+        if (len > 0)
+            break;
+        is_stderr++;
+    }
+
+    if (is_stderr > 1)
+        return 0;
+
+    buffer = buffer_new();
+    len = channel_read_buffer(v->channel, buffer, len, is_stderr);
+    if (len <= 0) {
+        return 0;
+    }
+
+    if (len > 0) {
+        strncat(output, (const char*) buffer_get(buffer), len);
+    }
+
+    buffer_free(buffer);
+    return 1;
+}
+
+static int get_response2(struct nxvnc *v, int timeout_in_seconds, char *output) {
     int rc;
     char buffer[256];
     int nbytes;
@@ -78,86 +120,83 @@ static int get_response(struct nxvnc *v, int timeout_in_seconds, char *output) {
     return totalbytes > 0;
 }
 
+
 static int get_expected_response(struct nxvnc *v, int expected_code) {
     char output[1024];
     int response_code = -1;
     char *curLine;
-    int count = 2;
 
     output[0] = '\0';
-    while (count--) {
-        get_response(v, 1, output);
-	v->server_msg(v, "Looped in get_expected_response", 1);
-        usleep(500000);
+
+    v->server_msg(v, "Enter get_response_line loop", 1);
+    while (get_response_line(v, 1, output)) {
+        v->server_msg(v, "Doing get_response_line loop", 1);
+        v->server_msg(v, output, 1);
+
+        curLine = output;
+        while (curLine) {
+            char *nextLine = g_strchr(curLine, '\n');
+
+            if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
+                if (response_code == expected_code)
+                    return 1;
+            } 
+
+            if (nextLine)
+                *nextLine = '\0';
+
+            curLine = nextLine ? (nextLine + 1) : NULL;
+        }
+
+        output[0] = '\0';
     }
 
-    v->server_msg(v, "Done loop", 1);
-    v->server_msg(v, output, 1);
-
-    curLine = output;
-    while (curLine) {
-        char *nextLine = g_strchr(curLine, '\n');
-
-        if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
-	    if (response_code == expected_code)
-                break;
-        } 
-
-        if (nextLine)
-            *nextLine = '\0';
-
-        curLine = nextLine ? (nextLine + 1) : NULL;
-    }
-
-    return response_code == expected_code;
+    return 0;
 }
 
 static int get_session(struct nxvnc *v, char *ip) {
     char output[10240];
+    char username[128];
+    char sessiontoken[128];
     int response_code = -1;
     char *curLine;
     int count = 10;
+    int display;
 
     output[0] = '\0';
-    while (count--) {
-        get_response(v, 1, output);
-	usleep(500000);
-    }
 
-    v->server_msg(v, "Done loop", 1);
-    v->server_msg(v, output, 1);
+    v->server_msg(v, "Enter get_session loop", 1);
+    while (get_response_line(v, 1, output)) {
+        v->server_msg(v, "Doing get_session loop", 1);
+        v->server_msg(v, output, 1);
 
-    curLine = output;
-    while (curLine) {
-        char *nextLine = g_strchr(curLine, '\n');
-        int display;
-        char username[64];
-        char sessiontoken[33];
+        curLine = output;
+        while (curLine) {
+            char *nextLine = g_strchr(curLine, '\n');
 
-        if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
-	    if (response_code == 105) 
-                break;
-        } 
+            if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
+                if (response_code == 105)
+                    return 1;
+            }
 
-        if (nextLine)
-            *nextLine = '\0';
+            if (sscanf(curLine, "%d %s %s %s", &display, username, ip, sessiontoken) > 0) {
+                v->server_msg(v, "Found session name", 1);
+                v->server_msg(v, sessiontoken, 1);
 
-        if (sscanf(curLine, "%d %s %s %s", &display, username, ip, sessiontoken) > 0) {
-            //v->server_msg(v, "Found session name %s", sessiontoken);
-            v->server_msg(v, "Found session name", 1);
-            v->server_msg(v, sessiontoken, 1);
+                v->display = display;
+                v->sessiontoken = g_strdup(sessiontoken);
+            }
 
-            v->display = display;
-            v->sessiontoken = g_strdup(sessiontoken);
-            break;
+            if (nextLine)
+                *nextLine = '\0';
+
+            curLine = nextLine ? (nextLine + 1) : NULL;
         }
 
-        curLine = nextLine ? (nextLine + 1) : NULL;
+        output[0] = '\0';
     }
 
-    v->server_msg(v, "Finished session list", 0);
-    //return response_code == 105;
-    return v->sessiontoken ? 1 : 0;
+    return 0;
 }
 
 int get_session_info(struct nxvnc *v) {
@@ -165,86 +204,53 @@ int get_session_info(struct nxvnc *v) {
     int response_code = -1;
     char *curLine;
     int count = 10;
+    char cookie[33];
+    char sessionid[128];
+    int status;
 
     output[0] = '\0';
-    while (count--) {
-        get_response(v, 1, output);
-        usleep(500000);
-    }
 
-    v->server_msg(v, "Done loop", 1);
-    v->server_msg(v, output, 1);
+    v->server_msg(v, "Enter get_session_info loop", 1);
+    while (get_response_line(v, 1, output)) {
+        v->server_msg(v, "Doing get_session_info loop", 1);
+        v->server_msg(v, output, 1);
 
-    curLine = output;
-    while (curLine) {
-        char cookie[33];
-        char sessionid[128];
+        curLine = output;
+        while (curLine) {
+            char *nextLine = g_strchr(curLine, '\n');
 
-        char *nextLine = g_strchr(curLine, '\n');
-        int status;
-
-        if (nextLine)
-            *nextLine = '\0';
-
-        if (sscanf(curLine, "NX> %i ", &status) > 0) {
-            if (status == 700) {
-                if (sscanf(curLine, "NX> 700 Session id: %s", sessionid) > 0) {
-                    //v->server_msg(v, "Found session ID %s", sessionid);
-                    v->sessionid = g_strdup(sessionid);
-                }
-            } else if (status == 701) {
-                if (sscanf(curLine, "NX> 701 Proxy cookie: %32s", cookie) > 0) {
-                    //v->server_msg(v, "Found session cookie %s", cookie);
-                    v->cookie = g_strdup(cookie);
-                }
-            } else if (status == 105) {
-                response_code = status;
+            if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
+                if (response_code == 105)
+                    return 1;
             }
+
+            if (sscanf(curLine, "NX> %i ", &status) > 0) {
+                if (status == 700) {
+                    if (sscanf(curLine, "NX> 700 Session id: %s", sessionid) > 0) {
+                        //v->server_msg(v, "Found session ID %s", sessionid);
+                        v->sessionid = g_strdup(sessionid);
+                    }
+                } else if (status == 701) {
+                    if (sscanf(curLine, "NX> 701 Proxy cookie: %32s", cookie) > 0) {
+                        //v->server_msg(v, "Found session cookie %s", cookie);
+                        v->cookie = g_strdup(cookie);
+                    }
+                } else if (status == 105) {
+                    return 1;
+                }
+            }
+
+            if (nextLine)
+                *nextLine = '\0';
+
+            curLine = nextLine ? (nextLine + 1) : NULL;
         }
 
-        if (nextLine)
-            *nextLine = '\n';
-
-        curLine = nextLine ? (nextLine + 1) : NULL;
+        output[0] = '\0';
     }
 
-    return response_code == 105;
+    return 0;
 }
-
-static int get_expected_response_long(struct nxvnc *v, int expected_code) {
-    char output[1024];
-    int response_code = -1;
-    char *curLine;
-    int count = 10;
-
-    output[0] = '\0';
-    while (count--) {
-        get_response(v, 1, output);
-	v->server_msg(v, "Looped in get_expected_response", 1);
-        usleep(500000);
-    }
-
-    v->server_msg(v, "Done loop", 1);
-    v->server_msg(v, output, 1);
-
-    curLine = output;
-    while (curLine) {
-        char *nextLine = g_strchr(curLine, '\n');
-
-        if (sscanf(curLine, "NX> %i ", &response_code) > 0) {
-	    if (response_code == expected_code)
-                break;
-        } 
-
-        if (nextLine)
-            *nextLine = '\0';
-
-        curLine = nextLine ? (nextLine + 1) : NULL;
-    }
-
-    return response_code == expected_code;
-}
-
 
 /******************************************************************************/
 /* taken from vncauth.c */
@@ -1333,7 +1339,7 @@ lib_mod_connect(struct nxvnc *v)
 	if (ip[0] == '-') {
             /* no session */
 	    do_restore = 1;
-	} else if (g_strcmp(ip, "127.0.0.1") == 0) {
+	} else if (g_strcmp(ip, "127.0.0.1") == 0 && 0) {
             /* local session already running */
 	    v->server_msg(v, "NXProxy already running", 0);
 	    do_restore = 0;
@@ -1343,7 +1349,7 @@ lib_mod_connect(struct nxvnc *v)
 
 	    sprintf(disconnectcommand, "disconnect --sessionid=\"%s\"", v->sessiontoken);
 	    session_send_command(v, disconnectcommand);
-	    if (!get_expected_response_long(v, 105)) {
+	    if (!get_expected_response(v, 105)) {
 		v->server_msg(v, "Disconnect failed", 1);
 		return 1;
 	    } else {
@@ -1356,7 +1362,7 @@ lib_mod_connect(struct nxvnc *v)
 	if (do_restore) {
 	    char sessioncommand[1024];
 
-	    sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\"", v->username, v->sessiontoken, v->server_width, v->server_height);
+	    sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", v->username, v->sessiontoken, v->server_width, v->server_height);
 	    session_send_command(v, sessioncommand);
 	    get_session_info(v);
 
@@ -1365,10 +1371,12 @@ lib_mod_connect(struct nxvnc *v)
 		    v->server_msg(v, "Forked NXProxy", 1);
 	    } else if (v->nxproxy == 0) {
 		    char sessionstash[512];
+		    char vfboptions[512];
 		    sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", v->username, v->cookie, v->sessionid, "127.0.0.1", v->display);
+		    sprintf(vfboptions, "-screen 0 %dx%dx24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", v->server_width, v->server_height);
 		    v->server_msg(v, sessionstash, 1);
 		    //execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
-		    execl("/usr/bin/xvfb-run", "/usr/bin/xvfb-run", "-s", "-screen 0 1024x768x24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+		    execl("/usr/bin/xvfb-run", "/usr/bin/xvfb-run", "-s", vfboptions, "/usr/bin/nxproxy", "-S", sessionstash, NULL);
 	    } else {
 		    v->server_msg(v, "NXProxy fork failed", 1);
 		    return 1;
