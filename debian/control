@@ -3,7 +3,7 @@ Section: net
 Priority: optional
 Maintainer: Vincent Bernat <bernat@debian.org>
 Build-Depends: debhelper (>= 7.0.50~), libssl-dev, libpam0g-dev,
-	       autoconf (>= 2.59), automake (>= 1.6), libtool,
+	       autoconf (>= 2.59), automake (>= 1.6), libtool, libssh-dev
 	       libx11-dev, libxfixes-dev, libfreerdp-dev, pkg-config
 Standards-Version: 3.9.3
 Homepage: http://xrdp.sourceforge.net
@@ -12,7 +12,7 @@ Vcs-Git: git://git.debian.org/git/collab-maint/xrdp.git
 
 Package: xrdp
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, adduser
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, nxproxy, xvfb
 Recommends: vnc4server | tightvncserver | vnc-server
 Description: Remote Desktop Protocol (RDP) server
  Based on research work by the rdesktop project, xrdp uses the Remote

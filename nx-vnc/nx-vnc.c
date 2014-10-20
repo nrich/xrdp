@@ -1867,19 +1867,17 @@ mod_exit(struct nxvnc *v)
 */
 
     if (v->sessiontoken) {
-	/*
         char disconnectcommand[1024];
 
         sprintf(disconnectcommand, "disconnect --sessionid=\"%s\"", v->sessiontoken);
 
         session_send_command(v, disconnectcommand);
-	if (!get_expected_response(v, 900)) {
+	if (!get_expected_response(v, 105)) {
 	    v->server_msg(v, "Disconnect failed", 1);
 	    return 1;
 	} else {
 	    v->server_msg(v, "Disconnect", 0);
 	}
-	*/
     }
 
     g_delete_wait_obj_from_socket(v->sck_obj);
