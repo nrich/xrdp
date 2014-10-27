@@ -235,6 +235,12 @@ int get_session_info(struct nxvnc *v) {
                         //v->server_msg(v, "Found session cookie %s", cookie);
                         v->cookie = g_strdup(cookie);
                     }
+                } else if (status == 705) {
+                    if (sscanf(curLine, "NX> 705 Session display: %d", &v->display) > 0) {
+                        //v->server_msg(v, "Found session cookie %s", cookie);
+                        v->cookie = g_strdup(cookie);
+                    }
+
                 } else if (status == 105) {
                     return 1;
                 }
@@ -1332,17 +1338,93 @@ lib_mod_connect(struct nxvnc *v)
     } 
 
     if (!v->sessiontoken) {
-	v->server_msg(v, "Got no session", 0);
+        pid_t xvnc = 0;
+        char display[32];
+        char sessioncommand[1024];
+
+	v->server_msg(v, "No session", 0);
+
+
+        sprintf(sessioncommand, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", v->username, v->server_width, v->server_height, v->server_width, v->server_height);
+        session_send_command(v, sessioncommand);
+        get_session_info(v);
+        sprintf(display, ":%d", v->display + 7000);
+       
+        xvnc = fork();
+        if (xvnc > 1) {
+            v->server_msg(v, "Forked Xvnc", 1);
+        } else if (xvnc == 0) {
+            char geometry[32];
+
+            sprintf(geometry, "%dx%d", v->server_width, v->server_height);
+
+            execl("/opt/TurboVNC/bin/Xvnc", "/opt/TurboVNC/bin/Xvnc", "-localhost", "-geometry", geometry, "-ac", "-retro", display, NULL);
+        } else {
+            v->server_msg(v, "Xvnc fork failed", 0);
+            return 1;
+        }
+
+        v->nxproxy = fork();
+        if (v->nxproxy > 0) {
+            v->server_msg(v, "Forked NXProxy", 1);
+        } else if (v->nxproxy == 0) {
+            char sessionstash[512];
+            char vfboptions[512];
+            sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", v->username, v->cookie, v->sessionid, "127.0.0.1", v->display);
+            sprintf(vfboptions, "-screen 0 %dx%dx24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", v->server_width, v->server_height);
+            v->server_msg(v, sessionstash, 1);
+            //execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+            //execl("/usr/bin/xvfb-run", "/usr/bin/xvfb-run", "-s", vfboptions, "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+            //execle("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL, envp);
+
+            setenv("DISPLAY", display, 1);
+            execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+        } else {
+            v->server_msg(v, "NXProxy fork failed", 1);
+            return 1;
+        }
     } else {
 	int do_restore = 1;
+        char width[32];
+        char height[32];
+        char display[32];
+        char geometry[32];
+
+        sprintf(display, ":%d", v->display + 7000);
+        sprintf(geometry, "%dx%d", v->server_width, v->server_height);
+        sprintf(width, "%d", v->server_width);
+        sprintf(height, "%d", v->server_height);
 
 	if (ip[0] == '-') {
             /* no session */
 	    do_restore = 1;
-	} else if (g_strcmp(ip, "127.0.0.1") == 0 && 0) {
+	} else if (g_strcmp(ip, "127.0.0.1") == 0) {
+            pid_t xrandr = 0;
+            pid_t xwit = 0;
+
+            xrandr = fork();
+            if (xrandr > 0) {
+                wait();
+            } else if (xrandr == 0) {
+                execl("/usr/bin/xrandr", "/usr/bin/xrandr", "-display", display, "--fb", geometry, NULL);
+            } else {
+
+            }
+
+            xwit = fork();
+            if (xwit > 0) {
+                wait();
+            } else if (xwit == 0) {
+                execl("/usr/bin/xwit", "/usr/bin/xwit", "-display", display, "-all", "-resize", width, height, NULL);
+            } else {
+
+            }
+
             /* local session already running */
 	    v->server_msg(v, "NXProxy already running", 0);
 	    do_restore = 0;
+
+            
 	} else {
             /* another remote session */
 	    char disconnectcommand[1024];
@@ -1368,18 +1450,24 @@ lib_mod_connect(struct nxvnc *v)
 
 	    v->nxproxy = fork();
 	    if (v->nxproxy > 0) {
-		    v->server_msg(v, "Forked NXProxy", 1);
+		v->server_msg(v, "Forked NXProxy", 1);
 	    } else if (v->nxproxy == 0) {
-		    char sessionstash[512];
-		    char vfboptions[512];
-		    sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", v->username, v->cookie, v->sessionid, "127.0.0.1", v->display);
-		    sprintf(vfboptions, "-screen 0 %dx%dx24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", v->server_width, v->server_height);
-		    v->server_msg(v, sessionstash, 1);
-		    //execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
-		    execl("/usr/bin/xvfb-run", "/usr/bin/xvfb-run", "-s", vfboptions, "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+		char sessionstash[512];
+                char vfboptions[512];
+                char display[32];
+
+                sprintf(display, ":%d", v->display + 7000);        
+
+                sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", v->username, v->cookie, v->sessionid, "127.0.0.1", v->display);
+                sprintf(vfboptions, "-screen 0 %dx%dx24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", v->server_width, v->server_height);
+                v->server_msg(v, sessionstash, 1);
+                //execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+                //execl("/usr/bin/xvfb-run", "/usr/bin/xvfb-run", "-s", vfboptions, "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+                setenv("DISPLAY", display, 1);
+                execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
 	    } else {
-		    v->server_msg(v, "NXProxy fork failed", 1);
-		    return 1;
+		v->server_msg(v, "NXProxy fork failed", 1);
+		return 1;
 	    }
 	}
     }
@@ -1415,7 +1503,7 @@ lib_mod_connect(struct nxvnc *v)
     }
 
     make_stream(s);
-    g_sprintf(con_port, "%s", v->port);
+    g_sprintf(con_port, "%d", v->display + 7000 + 5900);
     make_stream(pixel_format);
     v->sck = g_tcp_socket();
     v->sck_obj = g_create_wait_obj_from_socket(v->sck, 0);
@@ -1866,6 +1954,7 @@ mod_exit(struct nxvnc *v)
     ssh_free(v->session);
 */
 
+/*
     if (v->sessiontoken) {
         char disconnectcommand[1024];
 
@@ -1879,6 +1968,7 @@ mod_exit(struct nxvnc *v)
 	    v->server_msg(v, "Disconnect", 0);
 	}
     }
+*/
 
     g_delete_wait_obj_from_socket(v->sck_obj);
     g_tcp_close(v->sck);
