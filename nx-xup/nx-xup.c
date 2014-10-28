@@ -243,6 +243,88 @@ int get_session_info(struct mod *v) {
     return 0;
 }
 
+int send_disconnect(int nxdisplay) {
+    struct sockaddr_un sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_UNIX;
+    sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", nxdisplay-1000);
+    if (access(sa.sun_path, F_OK) == 0)
+    {
+        int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
+        size_t len = sizeof(sa);
+        sendto(sck, "sig", 4, 0, (struct sockaddr*)&sa, len);
+    }
+    else
+    {
+        log_message(LOG_LEVEL_INFO, "Failed to send disconnect to %s", sa.sun_path);
+        return 0;
+    }
+    return 1;
+}
+
+int start_nxproxy(struct mod *mod) {
+    pid_t nxproxy = fork();
+
+    if (nxproxy > 0) {
+        mod->server_msg(mod, "Forked NXProxy", 1);
+    } else if (nxproxy == 0) {
+        char sessionstash[512];
+        char vfboptions[512];
+
+        sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
+        mod->server_msg(mod, sessionstash, 1);
+
+        setenv("DISPLAY", display, 1);
+        execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
+    } else {
+        mod->server_msg(mod, "NXProxy fork failed", 1);
+        return 0;
+    }
+
+    return 1;
+}
+
+int start_x11rdp(struct mod *mod) {
+    pid_t x11rdp = fork();
+
+    if (x11rdp > 1) {
+        mod->server_msg(mod, "Forked X11rdp", 1);
+    } else if (x11rdp == 0) {
+        char geometry[32];
+        char display[32];
+
+        setsid();
+        signal(SIGHUP, SIG_IGN);
+
+        sprintf(geometry, "%dx%d", mod->width, mod->height);
+        sprintf(display, ":%d", mod->display - 1000);
+
+        execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
+    } else {
+        mod->server_msg(mod, "X11rdp fork failed", 0);
+        return 0;
+    }
+
+    return 1;
+}
+
+int resize_nxproxy(struct mod *mod) {
+    pid_t xwit = fork();
+
+    if (xwit > 0) {
+        wait();
+    } else if (xwit == 0) {
+        execl("/usr/bin/xwit", "/usr/bin/xwit", "-display", display, "-all", "-resize", width, height, NULL);
+    } else {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+
 
 /******************************************************************************/
 /* returns error */
@@ -549,7 +631,6 @@ lib_mod_connect(struct mod *mod)
 
     if (!mod->sessiontoken) {
         pid_t x11rdp = 0;
-        char display[32];
         char sessioncommand[1024];
 
         mod->server_msg(mod, "No session", 0);
@@ -559,37 +640,11 @@ lib_mod_connect(struct mod *mod)
         get_session_info(mod);
         sprintf(display, ":%d", mod->display - 1000);
 
-        x11rdp = fork();
-        if (x11rdp > 1) {
-            mod->server_msg(mod, "Forked Xvnc", 1);
-        } else if (x11rdp == 0) {
-            setsid();
-            signal(SIGHUP, SIG_IGN);
-
-            char geometry[32];
-
-            sprintf(geometry, "%dx%d", mod->width, mod->height);
-
-            execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
-        } else {
-            mod->server_msg(mod, "X11rdp fork failed", 0);
+        if (!start_x11rdp(mod)) {
             return 1;
         }
 
-        mod->nxproxy = fork();
-        if (mod->nxproxy > 0) {
-            mod->server_msg(mod, "Forked NXProxy", 1);
-        } else if (mod->nxproxy == 0) {
-            char sessionstash[512];
-            char vfboptions[512];
-            sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
-            sprintf(vfboptions, "-screen 0 %dx%dx24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", mod->width, mod->height);
-            mod->server_msg(mod, sessionstash, 1);
-
-            setenv("DISPLAY", display, 1);
-            execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
-        } else {
-            mod->server_msg(mod, "NXProxy fork failed", 1);
+        if (!start_nxproxy(mod)) {
             return 1;
         }
     } else {
@@ -599,23 +654,7 @@ lib_mod_connect(struct mod *mod)
         char display[32];
         char geometry[32];
 
-        {
-            struct sockaddr_un sa;
-
-            memset(&sa, 0, sizeof(sa));
-            sa.sun_family = AF_UNIX;
-            sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", mod->display-1000);
-            if (access(sa.sun_path, F_OK) == 0)
-            {
-                int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
-                size_t len = sizeof(sa);
-                sendto(sck, "sig", 4, 0, (struct sockaddr*)&sa, len);
-            }
-            else
-            {
-                log_message(LOG_LEVEL_INFO, "Failed to send disconnect to %s", sa.sun_path);
-            }
-        }
+        send_disconnect(mod->display);
 
         sprintf(display, ":%d", mod->display - 1000);
         sprintf(geometry, "%dx%d", mod->width, mod->height);
@@ -626,15 +665,8 @@ lib_mod_connect(struct mod *mod)
             /* no session */
             do_restore = 1;
         } else if (g_strcmp(ip, "127.0.0.1") == 0) {
-            pid_t xwit = 0;
-
-            xwit = fork();
-            if (xwit > 0) {
-                wait();
-            } else if (xwit == 0) {
-                execl("/usr/bin/xwit", "/usr/bin/xwit", "-display", display, "-all", "-resize", width, height, NULL);
-            } else {
-
+            if (!resize_nxproxy(mod)) {
+                return 1;
             }
 
             /* local session already running */
@@ -663,22 +695,7 @@ lib_mod_connect(struct mod *mod)
             session_send_command(mod, sessioncommand);
             get_session_info(mod);
 
-            mod->nxproxy = fork();
-            if (mod->nxproxy > 0) {
-                mod->server_msg(mod, "Forked NXProxy", 1);
-            } else if (mod->nxproxy == 0) {
-                char sessionstash[512];
-                char vfboptions[512];
-                char display[32];
-
-                sprintf(display, ":%d", mod->display - 1000);
-
-                sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,pack=none,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
-                mod->server_msg(mod, sessionstash, 1);
-                setenv("DISPLAY", display, 1);
-                execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
-            } else {
-                mod->server_msg(mod, "NXProxy fork failed", 1);
+            if (!start_nxproxy(mod)) {
                 return 1;
             }
         }

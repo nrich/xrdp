@@ -171,7 +171,4 @@ struct mod
   char *sessionid;
   char *sessiontoken;
   char *cookie;
-
-  /* nxproxy child process */
-  pid_t nxproxy;
 };
