@@ -399,7 +399,7 @@ lib_mod_connect(struct mod *mod)
     char pidfile[128];
     char ip[16];
 
-    mod->server_msg(v, "NX started connecting", 0);
+    mod->server_msg(mod, "NX started connecting", 0);
 
     mod->session = ssh_new();
     if (mod->session == NULL) {
@@ -551,7 +551,7 @@ lib_mod_connect(struct mod *mod)
 
         mod->server_msg(mod, "No session", 0);
 
-        sprintf(sessioncommand, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->server_width, mod->server_height, mod->server_width, mod->server_height);
+        sprintf(sessioncommand, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
         session_send_command(mod, sessioncommand);
         get_session_info(mod);
         sprintf(display, ":%d", mod->display + 7000);
@@ -577,7 +577,7 @@ lib_mod_connect(struct mod *mod)
             char sessionstash[512];
             char vfboptions[512];
             sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
-            sprintf(vfboptions, "-screen 0 %dx%dx24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", mod->server_width, mod->server_height);
+            sprintf(vfboptions, "-screen 0 %dx%dx24 -pixdepths 1 4 8 15 16 24 32 -fbdir /var/tmp", mod->width, mod->height);
             mod->server_msg(mod, sessionstash, 1);
 
             setenv("DISPLAY", display, 1);
@@ -594,9 +594,9 @@ lib_mod_connect(struct mod *mod)
         char geometry[32];
 
         sprintf(display, ":%d", mod->display + 7000);
-        sprintf(geometry, "%dx%d", mod->server_width, mod->server_height);
-        sprintf(width, "%d", mod->server_width);
-        sprintf(height, "%d", mod->server_height);
+        sprintf(geometry, "%dx%d", mod->width, mod->height);
+        sprintf(width, "%d", mod->width);
+        sprintf(height, "%d", mod->height);
 
         if (ip[0] == '-') {
             /* no session */
@@ -635,7 +635,7 @@ lib_mod_connect(struct mod *mod)
         if (do_restore) {
             char sessioncommand[1024];
 
-            sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->sessiontoken, mod->server_width, mod->server_height);
+            sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->sessiontoken, mod->width, mod->height);
             session_send_command(mod, sessioncommand);
             get_session_info(mod);
 
