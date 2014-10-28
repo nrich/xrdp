@@ -288,27 +288,35 @@ int start_nxproxy(struct mod *mod) {
 }
 
 int start_x11rdp(struct mod *mod) {
-    pid_t x11rdp = fork();
+    char disconnect_socket[128];
+    sprintf(disconnect_socket, "/tmp/xrdp_disconnect_display_%d", mod->display-1000);
 
-    if (x11rdp > 1) {
-        mod->server_msg(mod, "Forked X11rdp", 1);
-    } else if (x11rdp == 0) {
-        char geometry[32];
-        char display[32];
-
-        setsid();
-        signal(SIGHUP, SIG_IGN);
-
-        sprintf(geometry, "%dx%d", mod->width, mod->height);
-        sprintf(display, ":%d", mod->display - 1000);
-
-        execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
+    if (access(disconnect_socket, F_OK) != -1) {
+        mod->server_msg(mod, "X11rdp already running", 0);
+        return 1;
     } else {
-        mod->server_msg(mod, "X11rdp fork failed", 0);
-        return 0;
-    }
+        pid_t x11rdp = fork();
 
-    return 1;
+        if (x11rdp > 1) {
+            mod->server_msg(mod, "Forked X11rdp", 1);
+        } else if (x11rdp == 0) {
+            char geometry[32];
+            char display[32];
+
+            setsid();
+            signal(SIGHUP, SIG_IGN);
+
+            sprintf(geometry, "%dx%d", mod->width, mod->height);
+            sprintf(display, ":%d", mod->display - 1000);
+
+            execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
+        } else {
+            mod->server_msg(mod, "X11rdp fork failed", 0);
+            return 0;
+        }
+
+        return 1;
+    }
 }
 
 int resize_nxproxy(struct mod *mod) {
@@ -658,8 +666,6 @@ lib_mod_connect(struct mod *mod)
         }
     } else {
         int do_restore = 1;
-        char width[32];
-        char height[32];
         char display[32];
         char geometry[32];
 
@@ -667,8 +673,6 @@ lib_mod_connect(struct mod *mod)
 
         sprintf(display, ":%d", mod->display - 1000);
         sprintf(geometry, "%dx%d", mod->width, mod->height);
-        sprintf(width, "%d", mod->width);
-        sprintf(height, "%d", mod->height);
 
         if (ip[0] == '-') {
             /* no session */
@@ -703,6 +707,10 @@ lib_mod_connect(struct mod *mod)
             sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->sessiontoken, mod->width, mod->height);
             session_send_command(mod, sessioncommand);
             get_session_info(mod);
+
+            if (!start_x11rdp(mod)) {
+                return 1;
+            }
 
             if (!start_nxproxy(mod)) {
                 return 1;
