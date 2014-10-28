@@ -557,12 +557,12 @@ lib_mod_connect(struct mod *mod)
         sprintf(display, ":%d", mod->display + 7000);
 
         x11rdp = fork();
-        if (xvnc > 1) {
+        if (x11rdp > 1) {
             mod->server_msg(mod, "Forked Xvnc", 1);
-        } else if (xvnc == 0) {
+        } else if (x11rdp == 0) {
             char geometry[32];
 
-            sprintf(geometry, "%dx%d", mod->server_width, mod->server_height);
+            sprintf(geometry, "%dx%d", mod->width, mod->height);
 
             execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-bs", "-ac", "-depth", "24", "-nolisten", "tcp", NULL);
         } else {
