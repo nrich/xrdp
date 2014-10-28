@@ -34,6 +34,9 @@
 #include <sys/types.h>
 #include <signal.h>
 
+#include <sys/socket.h>
+#include <sys/un.h>
+
 #define NX_SSH_TYPE_DSS 1
 #define NX_SSH_TYPE_RSA 2
 
@@ -554,17 +557,20 @@ lib_mod_connect(struct mod *mod)
         sprintf(sessioncommand, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
         session_send_command(mod, sessioncommand);
         get_session_info(mod);
-        sprintf(display, ":%d", mod->display + 7000);
+        sprintf(display, ":%d", mod->display - 1000);
 
         x11rdp = fork();
         if (x11rdp > 1) {
             mod->server_msg(mod, "Forked Xvnc", 1);
         } else if (x11rdp == 0) {
+            setsid();
+            signal(SIGHUP, SIG_IGN);
+
             char geometry[32];
 
             sprintf(geometry, "%dx%d", mod->width, mod->height);
 
-            execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-bs", "-ac", "-depth", "24", "-nolisten", "tcp", NULL);
+            execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
         } else {
             mod->server_msg(mod, "X11rdp fork failed", 0);
             return 1;
@@ -593,7 +599,25 @@ lib_mod_connect(struct mod *mod)
         char display[32];
         char geometry[32];
 
-        sprintf(display, ":%d", mod->display + 7000);
+        {
+            struct sockaddr_un sa;
+
+            memset(&sa, 0, sizeof(sa));
+            sa.sun_family = AF_UNIX;
+            sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", mod->display-1000);
+            if (access(sa.sun_path, F_OK) == 0)
+            {
+                int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
+                size_t len = sizeof(sa);
+                sendto(sck, "sig", 4, 0, (struct sockaddr*)&sa, len);
+            }
+            else
+            {
+                log_message(LOG_LEVEL_INFO, "Failed to send disconnect to %s", sa.sun_path);
+            }
+        }
+
+        sprintf(display, ":%d", mod->display - 1000);
         sprintf(geometry, "%dx%d", mod->width, mod->height);
         sprintf(width, "%d", mod->width);
         sprintf(height, "%d", mod->height);
@@ -647,9 +671,9 @@ lib_mod_connect(struct mod *mod)
                 char vfboptions[512];
                 char display[32];
 
-                sprintf(display, ":%d", mod->display + 7000);
+                sprintf(display, ":%d", mod->display - 1000);
 
-                sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
+                sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,pack=none,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
                 mod->server_msg(mod, sessionstash, 1);
                 setenv("DISPLAY", display, 1);
                 execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
@@ -686,7 +710,8 @@ lib_mod_connect(struct mod *mod)
 
     make_stream(s);
     //g_sprintf(con_port, "%s", mod->port);
-    g_sprintf(con_port, "%d", 6200 + mod->display);
+    g_sprintf(con_port, "%d", 6200 + mod->display - 1000);
+    mod->server_msg(mod, con_port, 0);
     use_uds = 0;
 
     if (con_port[0] == '/')
@@ -756,7 +781,7 @@ RECONNECT:
         mod->sck = 0;
         i++;
 
-        if (i >= 60)
+        if (i >= 20)
         {
             mod->server_msg(mod, "connection problem, giving up", 0);
             break;
