@@ -18,11 +18,19 @@ else
 XRDPNXVNCDIR = 
 endif
 
+if XRDP_NXXUP
+XRDPNXXUPDIR = nx-xup
+else
+XRDPNXXUPDIR = 
+endif
+
+
 SUBDIRS = \
   common \
   vnc \
   rdp \
   $(XRDPNXVNCDIR) \
+  $(XRDPNXXUPDIR) \
   xup \
   mc \
   $(NEUTRINORDPDIR) \

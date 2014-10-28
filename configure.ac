@@ -49,6 +49,11 @@ AC_ARG_ENABLE(nxvnc, AS_HELP_STRING([--enable-nxvnc],
               [nxvnc=true], [nxvnc=false])
 AM_CONDITIONAL(XRDP_NXVNC, [test x$nxvnc = xtrue])
 
+AC_ARG_ENABLE(nxxup, AS_HELP_STRING([--enable-nxxup],
+              [Build nxxup module (default: no)]),
+              [nxxup=true], [nxxup=false])
+AM_CONDITIONAL(XRDP_NXXUP, [test x$nxxup = xtrue])
+
 AC_ARG_ENABLE(simplesound, AS_HELP_STRING([--enable-simplesound],
               [Build simple pulse audio interface (default: no)]),
               [simplesound=true], [simplesound=false])
@@ -117,6 +122,13 @@ then
     [AC_MSG_ERROR([please install libssh-dev or libssh-devel])])
 fi
 
+if ! test -z "$enable_nxxup"
+then
+  AC_CHECK_HEADER([libssh/libssh.h], [],
+    [AC_MSG_ERROR([please install libssh-dev or libssh-devel])])
+fi
+
+
 # checking for fuse
 if ! test -z "$enable_fuse"
 then
@@ -156,6 +168,7 @@ AC_CONFIG_FILES([Makefile
                  vnc/Makefile
                  rdp/Makefile
                  nx-vnc/Makefile
+                 nx-xup/Makefile
                  libxrdp/Makefile
                  xup/Makefile
                  mc/Makefile

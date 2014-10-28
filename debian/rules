@@ -6,7 +6,7 @@
 
 override_dh_auto_configure:
 	./bootstrap
-	./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --enable-jpeg --enable-nxvnc
+	./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --enable-jpeg --enable-nxvnc --enable-nxxup
 	find -name Makefile | while read i; do sed -e 's#\(XRDP_PID_PATH.*/run\)#\1/xrdp#g' -i "$$i"; done
 
 override_dh_makeshlibs:
