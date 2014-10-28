@@ -270,7 +270,9 @@ int start_nxproxy(struct mod *mod) {
         mod->server_msg(mod, "Forked NXProxy", 1);
     } else if (nxproxy == 0) {
         char sessionstash[512];
-        char vfboptions[512];
+        char display[32];
+
+        sprintf(display, ":%d", mod->display - 1000);
 
         sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
         mod->server_msg(mod, sessionstash, 1);
@@ -315,6 +317,14 @@ int resize_nxproxy(struct mod *mod) {
     if (xwit > 0) {
         wait();
     } else if (xwit == 0) {
+        char display[32];
+        char width[32];
+        char height[32];
+
+        sprintf(width, "%d", mod->width);
+        sprintf(height, "%d", mod->height);
+        sprintf(display, ":%d", mod->display - 1000);
+
         execl("/usr/bin/xwit", "/usr/bin/xwit", "-display", display, "-all", "-resize", width, height, NULL);
     } else {
         return 0;
@@ -638,7 +648,6 @@ lib_mod_connect(struct mod *mod)
         sprintf(sessioncommand, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
         session_send_command(mod, sessioncommand);
         get_session_info(mod);
-        sprintf(display, ":%d", mod->display - 1000);
 
         if (!start_x11rdp(mod)) {
             return 1;
