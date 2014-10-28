@@ -168,7 +168,4 @@ struct mod
 
   /* nx data */
   int display;
-  char *sessionid;
-  char *sessiontoken;
-  char *cookie;
 };

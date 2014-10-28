@@ -139,10 +139,9 @@ static int get_expected_response(struct mod *v, int expected_code) {
     return 0;
 }
 
-static int get_session(struct mod *v, char *ip) {
+static int get_session(struct mod *v, char *ip, char *sessiontoken) {
     char output[10240];
     char username[128];
-    char sessiontoken[128];
     int response_code = -1;
     char *curLine;
     int count = 10;
@@ -169,7 +168,7 @@ static int get_session(struct mod *v, char *ip) {
                 v->server_msg(v, sessiontoken, 1);
 
                 v->display = display;
-                v->sessiontoken = g_strdup(sessiontoken);
+                //v->sessiontoken = g_strdup(sessiontoken);
             }
 
             if (nextLine)
@@ -184,13 +183,11 @@ static int get_session(struct mod *v, char *ip) {
     return 0;
 }
 
-int get_session_info(struct mod *v) {
+int get_session_info(struct mod *v, char *sessionid, char *cookie) {
     char output[10240];
     int response_code = -1;
     char *curLine;
     int count = 10;
-    char cookie[33];
-    char sessionid[128];
     int status;
 
     output[0] = '\0';
@@ -213,17 +210,17 @@ int get_session_info(struct mod *v) {
                 if (status == 700) {
                     if (sscanf(curLine, "NX> 700 Session id: %s", sessionid) > 0) {
                         //v->server_msg(v, "Found session ID %s", sessionid);
-                        v->sessionid = g_strdup(sessionid);
+                        //v->sessionid = g_strdup(sessionid);
                     }
                 } else if (status == 701) {
                     if (sscanf(curLine, "NX> 701 Proxy cookie: %32s", cookie) > 0) {
                         //v->server_msg(v, "Found session cookie %s", cookie);
-                        v->cookie = g_strdup(cookie);
+                        //v->cookie = g_strdup(cookie);
                     }
                 } else if (status == 705) {
                     if (sscanf(curLine, "NX> 705 Session display: %d", &v->display) > 0) {
                         //v->server_msg(v, "Found session cookie %s", cookie);
-                        v->cookie = g_strdup(cookie);
+                        //v->cookie = g_strdup(cookie);
                     }
 
                 } else if (status == 105) {
@@ -263,7 +260,7 @@ int send_disconnect(int nxdisplay) {
     return 1;
 }
 
-int start_nxproxy(struct mod *mod) {
+int start_nxproxy(struct mod *mod, char *sessionid, char *cookie) {
     pid_t nxproxy = fork();
 
     if (nxproxy > 0) {
@@ -274,7 +271,7 @@ int start_nxproxy(struct mod *mod) {
 
         sprintf(display, ":%d", mod->display - 1000);
 
-        sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, mod->cookie, mod->sessionid, "127.0.0.1", mod->display);
+        sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, cookie, sessionid, "127.0.0.1", mod->display);
         mod->server_msg(mod, sessionstash, 1);
 
         setenv("DISPLAY", display, 1);
@@ -292,7 +289,7 @@ int start_x11rdp(struct mod *mod) {
     sprintf(disconnect_socket, "/tmp/xrdp_disconnect_display_%d", mod->display-1000);
 
     if (access(disconnect_socket, F_OK) != -1) {
-        mod->server_msg(mod, "X11rdp already running", 0);
+        mod->server_msg(mod, "X11rdp already running", 1);
         return 1;
     } else {
         pid_t x11rdp = fork();
@@ -502,11 +499,15 @@ lib_mod_connect(struct mod *mod)
     char pidfile[128];
     char ip[16];
 
-    mod->server_msg(mod, "NX started connecting", 0);
+    char cookie[33];
+    char sessionid[128];
+    char sessiontoken[128];
+
+    mod->server_msg(mod, "NX started connection", 0);
 
     mod->session = ssh_new();
     if (mod->session == NULL) {
-        mod->server_msg(mod, "Failed to create SSH session", 1);
+        mod->server_msg(mod, "Failed to create SSH session", 0);
         return 1;
     }
 
@@ -514,18 +515,18 @@ lib_mod_connect(struct mod *mod)
     ssh_options_set(mod->session, SSH_OPTIONS_USER, "nx");
 
     if (tmpnam(tmpfile) == NULL) {
-        mod->server_msg(mod, "Failed to create temporary private key file", 1);
+        mod->server_msg(mod, "Failed to create temporary private key file", 0);
         return 1;
     } else {
         FILE *keyfile = fopen(tmpfile, "w");
         size_t keylen = sizeof(nx_default_private_key);
         if (!keyfile) {
-            mod->server_msg(mod, "Failed to open temporary private key file", 1);
+            mod->server_msg(mod, "Failed to open temporary private key file", 0);
             return 1;
         }
 
         if (fwrite(nx_default_private_key, keylen-1, 1, keyfile) != 1) {
-            mod->server_msg(mod, "Failed to write to temporary private key file", 1);
+            mod->server_msg(mod, "Failed to write to temporary private key file", 0);
             return 1;
         }
 
@@ -550,7 +551,7 @@ lib_mod_connect(struct mod *mod)
         ssh_free(mod->session);
         return 1;
     } else {
-        mod->server_msg(mod, "Connected to SSH server", 0);
+        mod->server_msg(mod, "Connected to SSH server", 1);
     }
 
 
@@ -561,107 +562,107 @@ lib_mod_connect(struct mod *mod)
 
     if (rc != SSH_AUTH_SUCCESS) {
         //v->server_msg(v, "Failed to auth to SSH server %s", ssh_get_error(session));
-        mod->server_msg(mod, "Failed to auth to SSH server", 1);
+        mod->server_msg(mod, "Failed to auth to SSH server", 0);
         ssh_free(mod->session);
         return 1;
     } else {
-        mod->server_msg(mod, "Connected to SSH server", 0);
+        mod->server_msg(mod, "Authed to SSH server", 1);
     }
 
     mod->channel = ssh_channel_new(mod->session);
     if (mod->channel == NULL) {
         //v->server_msg(v, "Error creating channel %s", ssh_get_error(session));
-        mod->server_msg(mod, "Error creating channel", 1);
+        mod->server_msg(mod, "Error creating channel", 0);
         ssh_free(mod->session);
         return 1;
     } else {
-        mod->server_msg(mod, "Created channel", 0);
+        mod->server_msg(mod, "Created channel", 1);
     }
 
     rc = ssh_channel_open_session(mod->channel);
     if (rc != SSH_OK) {
         ssh_channel_free(mod->channel);
         //v->server_msg(v, "Error opening channel: %s\n", ssh_get_error(session));
-        mod->server_msg(mod, "Error opening channel", 1);
+        mod->server_msg(mod, "Error opening channel", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Opened channel", 0);
+        mod->server_msg(mod, "Opened channel", 1);
     }
 
     channel_request_shell(mod->channel);
 
     session_send_command(mod, "HELLO NXCLIENT - Version 3.5.0");
-    mod->server_msg(mod, "Sent hello", 0);
+    mod->server_msg(mod, "Sent hello", 1);
     if (!get_expected_response(mod, 105)) {
-        mod->server_msg(mod, "Hello to NX server failed", 1);
+        mod->server_msg(mod, "Hello to NX server failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Said hello", 0);
+        mod->server_msg(mod, "Said hello", 1);
     }
 
     session_send_command(mod, "SET SHELL_MODE SHELL");
     if (!get_expected_response(mod, 105)) {
-        mod->server_msg(mod, "Set shell mode failed", 1);
+        mod->server_msg(mod, "Set shell mode failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Set shell mode", 0);
+        mod->server_msg(mod, "Set shell mode", 1);
     }
 
     session_send_command(mod, "SET AUTH_MODE PASSWORD");
     if (!get_expected_response(mod, 105)) {
-        mod->server_msg(mod, "Set auth mode failed", 1);
+        mod->server_msg(mod, "Set auth mode failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Set auth mode", 0);
+        mod->server_msg(mod, "Set auth mode", 1);
     }
 
     session_send_command(mod, "login");
     if (!get_expected_response(mod, 101)) {
-        mod->server_msg(mod, "Login command failed", 1);
+        mod->server_msg(mod, "Login command failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Login", 0);
+        mod->server_msg(mod, "Login", 1);
     }
 
     session_send_command(mod, mod->username);
     if (!get_expected_response(mod, 102)) {
-        mod->server_msg(mod, "Sending username failed", 1);
+        mod->server_msg(mod, "Sending username failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Sent username", 0);
+        mod->server_msg(mod, "Sent username", 1);
     }
 
     session_send_command(mod, mod->password);
     if (!get_expected_response(mod, 105)) {
-        mod->server_msg(mod, "Authentication failed", 1);
+        mod->server_msg(mod, "Authentication failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Auth OK", 0);
+        mod->server_msg(mod, "Auth OK", 1);
     }
 
     session_send_command(mod, "listsession");
-    if (!get_session(mod, ip)) {
-        mod->server_msg(mod, "Session listing failed", 1);
+    if (!get_session(mod, ip, sessiontoken)) {
+        mod->server_msg(mod, "Session listing failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Listed sessions", 0);
+        mod->server_msg(mod, "Listed sessions", 1);
     }
 
-    if (!mod->sessiontoken) {
+    if (!sessiontoken[0]) {
         pid_t x11rdp = 0;
         char sessioncommand[1024];
 
-        mod->server_msg(mod, "No session", 0);
+        mod->server_msg(mod, "No session found", 1);
 
         sprintf(sessioncommand, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
         session_send_command(mod, sessioncommand);
-        get_session_info(mod);
+        get_session_info(mod, sessionid, cookie);
 
         if (!start_x11rdp(mod)) {
             return 1;
         }
 
-        if (!start_nxproxy(mod)) {
+        if (!start_nxproxy(mod, sessionid, cookie)) {
             return 1;
         }
     } else {
@@ -683,19 +684,19 @@ lib_mod_connect(struct mod *mod)
             }
 
             /* local session already running */
-            mod->server_msg(mod, "NXProxy already running", 0);
+            mod->server_msg(mod, "NXProxy already running", 1);
             do_restore = 0;
         } else {
             /* another remote session */
             char disconnectcommand[1024];
 
-            sprintf(disconnectcommand, "disconnect --sessionid=\"%s\"", mod->sessiontoken);
+            sprintf(disconnectcommand, "disconnect --sessionid=\"%s\"", sessiontoken);
             session_send_command(mod, disconnectcommand);
             if (!get_expected_response(mod, 105)) {
-                mod->server_msg(mod, "Disconnect failed", 1);
+                mod->server_msg(mod, "Disconnect failed", 0);
                 return 1;
             } else {
-                mod->server_msg(mod, "Disconnect", 0);
+                mod->server_msg(mod, "Disconnect existing session", 1);
             }
 
             do_restore = 1;
@@ -704,19 +705,34 @@ lib_mod_connect(struct mod *mod)
         if (do_restore) {
             char sessioncommand[1024];
 
-            sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->sessiontoken, mod->width, mod->height);
+            sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, sessiontoken, mod->width, mod->height);
             session_send_command(mod, sessioncommand);
-            get_session_info(mod);
+            get_session_info(mod, sessionid, cookie);
 
             if (!start_x11rdp(mod)) {
                 return 1;
             }
 
-            if (!start_nxproxy(mod)) {
+            if (!start_nxproxy(mod, sessionid, cookie)) {
                 return 1;
             }
         }
     }
+
+    session_send_command(mod, "bye");
+    if (!get_expected_response(mod, 999)) {
+        mod->server_msg(mod, "Goodbye failed", 0);
+        return 1;
+    } else {
+        mod->server_msg(mod, "Sent goodbye", 1);
+    }
+
+    ssh_channel_close(mod->channel);
+    ssh_channel_send_eof(mod->channel);
+    ssh_channel_free(mod->channel);
+
+    ssh_disconnect(mod->session);
+    ssh_free(mod->session);
 
     LIB_DEBUG(mod, "in lib_mod_connect");
     /* clear screen */
@@ -745,7 +761,6 @@ lib_mod_connect(struct mod *mod)
     make_stream(s);
     //g_sprintf(con_port, "%s", mod->port);
     g_sprintf(con_port, "%d", 6200 + mod->display - 1000);
-    mod->server_msg(mod, con_port, 0);
     use_uds = 0;
 
     if (con_port[0] == '/')
