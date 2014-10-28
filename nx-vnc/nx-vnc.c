@@ -1350,6 +1350,7 @@ lib_mod_connect(struct nxvnc *v)
         get_session_info(v);
         sprintf(display, ":%d", v->display + 7000);
        
+/*
         xvnc = fork();
         if (xvnc > 1) {
             v->server_msg(v, "Forked Xvnc", 1);
@@ -1358,11 +1359,15 @@ lib_mod_connect(struct nxvnc *v)
 
             sprintf(geometry, "%dx%d", v->server_width, v->server_height);
 
-            execl("/opt/TurboVNC/bin/Xvnc", "/opt/TurboVNC/bin/Xvnc", "-localhost", "-geometry", geometry, "-ac", "-retro", display, NULL);
+            //execl("/opt/TurboVNC/bin/Xvnc", "/opt/TurboVNC/bin/Xvnc", "-localhost", "-geometry", geometry, "-ac", "-retro", display, NULL);
+            //execl("/usr/bin/Xvnc", "/usr/bin/Xvnc", "-localhost", "-geometry", geometry, "-ac", "-SecurityTypes", "None", display, NULL);
+            //execl("/usr/bin/Xvnc", "/usr/bin/Xvnc", "-localhost", "-geometry", geometry, "-ac", display, NULL);
+            //execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-bs", "-ac", "-depth", "24", "-nolisten", "tcp", NULL);
         } else {
             v->server_msg(v, "Xvnc fork failed", 0);
             return 1;
         }
+*/
 
         v->nxproxy = fork();
         if (v->nxproxy > 0) {
@@ -1504,6 +1509,7 @@ lib_mod_connect(struct nxvnc *v)
 
     make_stream(s);
     g_sprintf(con_port, "%d", v->display + 7000 + 5900);
+    //g_sprintf(con_port, "%s", v->port);
     make_stream(pixel_format);
     v->sck = g_tcp_socket();
     v->sck_obj = g_create_wait_obj_from_socket(v->sck, 0);
