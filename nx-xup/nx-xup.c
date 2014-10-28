@@ -503,6 +503,8 @@ lib_mod_connect(struct mod *mod)
     char sessionid[128];
     char sessiontoken[128];
 
+    sessiontoken[0] = '\0';
+
     mod->server_msg(mod, "NX started connection", 0);
 
     mod->session = ssh_new();

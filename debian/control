@@ -12,7 +12,7 @@ Vcs-Git: git://git.debian.org/git/collab-maint/xrdp.git
 
 Package: xrdp
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, nxproxy
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, nxproxy, xwit
 Recommends: vnc4server | tightvncserver | vnc-server
 Description: Remote Desktop Protocol (RDP) server
  Based on research work by the rdesktop project, xrdp uses the Remote
