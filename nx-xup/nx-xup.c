@@ -648,7 +648,7 @@ lib_mod_connect(struct mod *mod)
         mod->server_msg(mod, "Listed sessions", 1);
     }
 
-    if (!sessiontoken[0]) {
+    if (sessiontoken[0] == '\0') {
         pid_t x11rdp = 0;
         char sessioncommand[1024];
 
