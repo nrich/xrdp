@@ -440,7 +440,7 @@ lib_mod_connect(struct mod *mod)
         unlink(tmpfile);
     }
 
-    rc = ssh_connect(v->session);
+    rc = ssh_connect(mod->session);
     if (rc != SSH_OK) {
         //v->server_msg(v, "Failed to connect to SSH server %s", ssh_get_error(session));
         mod->server_msg(mod, "Failed to connect to SSH server", 0);
