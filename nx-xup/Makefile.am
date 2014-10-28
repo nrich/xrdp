@@ -15,5 +15,5 @@ lib_LTLIBRARIES = \
 libnx_xup_la_SOURCES = nx-xup.c
 
 libnx_xup_la_LIBADD = \
-  $(top_builddir)/common/libcommon.la
+  $(top_builddir)/common/libcommon.la \
   -lssh
