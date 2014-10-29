@@ -28,6 +28,14 @@
     do { if (_level < LOG_LEVEL) { g_writeln _args ; } } while (0)
 
 
+//#define FREENX
+
+#ifdef FREENX
+#define PORT_OFFSET 1990
+#else
+#define PORT_OFFSET 1000
+#endif
+
 #include <stdio.h>
 #include <string.h>
 
@@ -141,6 +149,7 @@ static int get_expected_response(struct mod *v, int expected_code) {
 
 static int get_session(struct mod *v, char *ip, char *sessiontoken) {
     char output[10240];
+    char server[128];
     char username[128];
     int response_code = -1;
     char *curLine;
@@ -163,7 +172,12 @@ static int get_session(struct mod *v, char *ip, char *sessiontoken) {
                     return 1;
             }
 
+#ifdef FREENX
+            if (sscanf(curLine, "%s %d %s %s %s", server, &display, username, ip, sessiontoken) > 0) {
+#else
             if (sscanf(curLine, "%d %s %s %s", &display, username, ip, sessiontoken) > 0) {
+#endif
+
                 v->server_msg(v, "Found session name", 1);
                 v->server_msg(v, sessiontoken, 1);
 
@@ -245,7 +259,7 @@ int send_disconnect(int nxdisplay) {
 
     memset(&sa, 0, sizeof(sa));
     sa.sun_family = AF_UNIX;
-    sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", nxdisplay-1000);
+    sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", nxdisplay-PORT_OFFSET);
     if (access(sa.sun_path, F_OK) == 0)
     {
         int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
@@ -269,7 +283,7 @@ int start_nxproxy(struct mod *mod, char *sessionid, char *cookie) {
         char sessionstash[512];
         char display[32];
 
-        sprintf(display, ":%d", mod->display - 1000);
+        sprintf(display, ":%d", mod->display - PORT_OFFSET);
 
         sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, cookie, sessionid, "127.0.0.1", mod->display);
         mod->server_msg(mod, sessionstash, 1);
@@ -286,7 +300,7 @@ int start_nxproxy(struct mod *mod, char *sessionid, char *cookie) {
 
 int start_x11rdp(struct mod *mod) {
     char disconnect_socket[128];
-    sprintf(disconnect_socket, "/tmp/xrdp_disconnect_display_%d", mod->display-1000);
+    sprintf(disconnect_socket, "/tmp/xrdp_disconnect_display_%d", mod->display-PORT_OFFSET);
 
     if (access(disconnect_socket, F_OK) != -1) {
         mod->server_msg(mod, "X11rdp already running", 1);
@@ -304,7 +318,7 @@ int start_x11rdp(struct mod *mod) {
             signal(SIGHUP, SIG_IGN);
 
             sprintf(geometry, "%dx%d", mod->width, mod->height);
-            sprintf(display, ":%d", mod->display - 1000);
+            sprintf(display, ":%d", mod->display - PORT_OFFSET);
 
             execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
         } else {
@@ -328,7 +342,7 @@ int resize_nxproxy(struct mod *mod) {
 
         sprintf(width, "%d", mod->width);
         sprintf(height, "%d", mod->height);
-        sprintf(display, ":%d", mod->display - 1000);
+        sprintf(display, ":%d", mod->display - PORT_OFFSET);
 
         execl("/usr/bin/xwit", "/usr/bin/xwit", "-display", display, "-all", "-resize", width, height, NULL);
     } else {
@@ -642,7 +656,12 @@ lib_mod_connect(struct mod *mod)
         mod->server_msg(mod, "Auth OK", 1);
     }
 
+#ifdef FREENX
+    session_send_command(mod, "listsession --all");
+#else
     session_send_command(mod, "listsession");
+#endif
+
     if (!get_session(mod, ip, sessiontoken)) {
         mod->server_msg(mod, "Session listing failed", 0);
         return 1;
@@ -674,7 +693,7 @@ lib_mod_connect(struct mod *mod)
 
         send_disconnect(mod->display);
 
-        sprintf(display, ":%d", mod->display - 1000);
+        sprintf(display, ":%d", mod->display - PORT_OFFSET);
         sprintf(geometry, "%dx%d", mod->width, mod->height);
 
         if (ip[0] == '-') {
@@ -762,7 +781,7 @@ lib_mod_connect(struct mod *mod)
 
     make_stream(s);
     //g_sprintf(con_port, "%s", mod->port);
-    g_sprintf(con_port, "%d", 6200 + mod->display - 1000);
+    g_sprintf(con_port, "%d", 6200 + mod->display - PORT_OFFSET);
     use_uds = 0;
 
     if (con_port[0] == '/')
