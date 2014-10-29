@@ -151,12 +151,15 @@ static int get_expected_response(struct mod *v, int expected_code) {
 
 static int get_session(struct mod *v, char *ip, char *sessiontoken) {
     char output[10240];
-    char server[128];
     char username[128];
     int response_code = -1;
     char *curLine;
     int count = 10;
     int display;
+
+#ifdef FREENX
+    char server[128];
+#endif
 
     output[0] = '\0';
 
