@@ -45,6 +45,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <pwd.h>
+
 #define NX_SSH_TYPE_DSS 1
 #define NX_SSH_TYPE_RSA 2
 
@@ -274,7 +276,7 @@ int send_disconnect(int nxdisplay) {
     return 1;
 }
 
-int start_nxproxy(struct mod *mod, char *sessionid, char *cookie) {
+int start_nxproxy(struct mod *mod, char *sessionid, char *cookie, uid_t uid) {
     pid_t nxproxy = fork();
 
     if (nxproxy > 0) {
@@ -288,6 +290,8 @@ int start_nxproxy(struct mod *mod, char *sessionid, char *cookie) {
         sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, cookie, sessionid, "127.0.0.1", mod->display);
         mod->server_msg(mod, sessionstash, 1);
 
+        //setuid(uid);
+
         setenv("DISPLAY", display, 1);
         execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
     } else {
@@ -298,7 +302,7 @@ int start_nxproxy(struct mod *mod, char *sessionid, char *cookie) {
     return 1;
 }
 
-int start_x11rdp(struct mod *mod) {
+int start_x11rdp(struct mod *mod, uid_t uid) {
     char disconnect_socket[128];
     sprintf(disconnect_socket, "/tmp/xrdp_disconnect_display_%d", mod->display-PORT_OFFSET);
 
@@ -317,6 +321,8 @@ int start_x11rdp(struct mod *mod) {
             setsid();
             signal(SIGHUP, SIG_IGN);
 
+            setuid(uid);
+
             sprintf(geometry, "%dx%d", mod->width, mod->height);
             sprintf(display, ":%d", mod->display - PORT_OFFSET);
 
@@ -330,7 +336,7 @@ int start_x11rdp(struct mod *mod) {
     }
 }
 
-int resize_nxproxy(struct mod *mod) {
+int resize_nxproxy(struct mod *mod, uid_t uid) {
     pid_t xwit = fork();
 
     if (xwit > 0) {
@@ -339,6 +345,8 @@ int resize_nxproxy(struct mod *mod) {
         char display[32];
         char width[32];
         char height[32];
+
+        setuid(uid);
 
         sprintf(width, "%d", mod->width);
         sprintf(height, "%d", mod->height);
@@ -517,6 +525,10 @@ lib_mod_connect(struct mod *mod)
     char sessionid[128];
     char sessiontoken[128];
 
+    struct passwd pwd;
+    struct passwd *pwdresult;
+    char pwdbuffer[16384];
+
     sessiontoken[0] = '\0';
 
     mod->server_msg(mod, "NX started connection", 0);
@@ -669,6 +681,12 @@ lib_mod_connect(struct mod *mod)
         mod->server_msg(mod, "Listed sessions", 1);
     }
 
+    getpwnam_r(mod->username, &pwd, pwdbuffer, sizeof(pwdbuffer), &pwdresult);
+    if (pwdresult == NULL) {
+        mod->server_msg(mod, "Uid lookup failed", 0);
+        return 1;
+    }
+
     if (sessiontoken[0] == '\0') {
         pid_t x11rdp = 0;
         char sessioncommand[1024];
@@ -679,11 +697,11 @@ lib_mod_connect(struct mod *mod)
         session_send_command(mod, sessioncommand);
         get_session_info(mod, sessionid, cookie);
 
-        if (!start_x11rdp(mod)) {
+        if (!start_x11rdp(mod, pwd.pw_uid)) {
             return 1;
         }
 
-        if (!start_nxproxy(mod, sessionid, cookie)) {
+        if (!start_nxproxy(mod, sessionid, cookie, pwd.pw_uid)) {
             return 1;
         }
     } else {
@@ -700,7 +718,7 @@ lib_mod_connect(struct mod *mod)
             /* no session */
             do_restore = 1;
         } else if (g_strcmp(ip, "127.0.0.1") == 0) {
-            if (!resize_nxproxy(mod)) {
+            if (!resize_nxproxy(mod, pwd.pw_uid)) {
                 return 1;
             }
 
@@ -730,11 +748,11 @@ lib_mod_connect(struct mod *mod)
             session_send_command(mod, sessioncommand);
             get_session_info(mod, sessionid, cookie);
 
-            if (!start_x11rdp(mod)) {
+            if (!start_x11rdp(mod, pwd.pw_uid)) {
                 return 1;
             }
 
-            if (!start_nxproxy(mod, sessionid, cookie)) {
+            if (!start_nxproxy(mod, sessionid, cookie, pwd.pw_uid)) {
                 return 1;
             }
         }
