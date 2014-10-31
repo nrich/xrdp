@@ -725,7 +725,7 @@ lib_mod_connect(struct mod *mod)
         char geometry[32];
 
 #ifdef EXTERNAL_X11RDP
-        send_disconnect(atoi(mod->port));
+        send_disconnect(atoi(mod->port)-6200);
 #else
         send_disconnect(mod->display-PORT_OFFSET);
 #endif
