@@ -277,7 +277,7 @@ int send_disconnect(int nxdisplay) {
     memset(&sa, 0, sizeof(sa));
     sa.sun_family = AF_UNIX;
 
-    sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", nxdisplay-PORT_OFFSET);
+    sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", nxdisplay);
     if (access(sa.sun_path, F_OK) == 0)
     {
         int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
@@ -727,7 +727,7 @@ lib_mod_connect(struct mod *mod)
 #ifdef EXTERNAL_X11RDP
         send_disconnect(atoi(mod->port));
 #else
-        send_disconnect(mod->display);
+        send_disconnect(mod->display-PORT_OFFSET);
 #endif
 
         get_canvas_display(mod, display);
