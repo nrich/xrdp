@@ -29,6 +29,7 @@
 
 
 //#define FREENX
+#define EXTERNAL_X11RDP
 
 #ifdef FREENX
 #define PORT_OFFSET 1990
@@ -259,11 +260,23 @@ int get_session_info(struct mod *v, char *sessionid, char *cookie) {
     return 0;
 }
 
+int get_canvas_display(struct mod *mod, char *display) {
+#ifdef EXTERNAL_X11RDP
+    sprintf(display, ":%d", atoi(mod->port) - 6200);
+#else
+    sprintf(display, ":%d", mod->display - PORT_OFFSET);
+#endif
+
+
+    return 1;
+}
+
 int send_disconnect(int nxdisplay) {
     struct sockaddr_un sa;
 
     memset(&sa, 0, sizeof(sa));
     sa.sun_family = AF_UNIX;
+
     sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", nxdisplay-PORT_OFFSET);
     if (access(sa.sun_path, F_OK) == 0)
     {
@@ -288,7 +301,7 @@ int start_nxproxy(struct mod *mod, char *sessionid, char *cookie, uid_t uid) {
         char sessionstash[512];
         char display[32];
 
-        sprintf(display, ":%d", mod->display - PORT_OFFSET);
+        get_canvas_display(mod, display);
 
         sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, cookie, sessionid, "127.0.0.1", mod->display);
         mod->server_msg(mod, sessionstash, 1);
@@ -307,7 +320,6 @@ int start_nxproxy(struct mod *mod, char *sessionid, char *cookie, uid_t uid) {
 
 int start_x11rdp(struct mod *mod, uid_t uid) {
     char disconnect_socket[128];
-    sprintf(disconnect_socket, "/tmp/xrdp_disconnect_display_%d", mod->display-PORT_OFFSET);
 
     if (access(disconnect_socket, F_OK) != -1) {
         mod->server_msg(mod, "X11rdp already running", 1);
@@ -327,7 +339,7 @@ int start_x11rdp(struct mod *mod, uid_t uid) {
             setuid(uid);
 
             sprintf(geometry, "%dx%d", mod->width, mod->height);
-            sprintf(display, ":%d", mod->display - PORT_OFFSET);
+            get_canvas_display(mod, display);
 
             execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
         } else {
@@ -349,11 +361,11 @@ int resize_nxproxy(struct mod *mod, uid_t uid) {
         char width[32];
         char height[32];
 
-        setuid(uid);
+        //setuid(uid);
 
         sprintf(width, "%d", mod->width);
         sprintf(height, "%d", mod->height);
-        sprintf(display, ":%d", mod->display - PORT_OFFSET);
+        get_canvas_display(mod, display);
 
         execl("/usr/bin/xwit", "/usr/bin/xwit", "-display", display, "-all", "-resize", width, height, NULL);
     } else {
@@ -362,8 +374,6 @@ int resize_nxproxy(struct mod *mod, uid_t uid) {
 
     return 1;
 }
-
-
 
 
 /******************************************************************************/
@@ -700,9 +710,11 @@ lib_mod_connect(struct mod *mod)
         session_send_command(mod, sessioncommand);
         get_session_info(mod, sessionid, cookie);
 
+#ifndef EXTERNAL_X11RDP
         if (!start_x11rdp(mod, pwd.pw_uid)) {
             return 1;
         }
+#endif
 
         if (!start_nxproxy(mod, sessionid, cookie, pwd.pw_uid)) {
             return 1;
@@ -712,9 +724,13 @@ lib_mod_connect(struct mod *mod)
         char display[32];
         char geometry[32];
 
+#ifdef EXTERNAL_X11RDP
+        send_disconnect(atoi(mod->display));
+#else
         send_disconnect(mod->display);
+#endif
 
-        sprintf(display, ":%d", mod->display - PORT_OFFSET);
+        get_canvas_display(mod, display);
         sprintf(geometry, "%dx%d", mod->width, mod->height);
 
         if (ip[0] == '-') {
@@ -751,9 +767,11 @@ lib_mod_connect(struct mod *mod)
             session_send_command(mod, sessioncommand);
             get_session_info(mod, sessionid, cookie);
 
+#ifndef EXTERNAL_X11RDP
             if (!start_x11rdp(mod, pwd.pw_uid)) {
                 return 1;
             }
+#endif
 
             if (!start_nxproxy(mod, sessionid, cookie, pwd.pw_uid)) {
                 return 1;
@@ -801,8 +819,12 @@ lib_mod_connect(struct mod *mod)
     }
 
     make_stream(s);
-    //g_sprintf(con_port, "%s", mod->port);
+
+#ifdef EXTERNAL_X11RDP
+    g_sprintf(con_port, "%s", mod->port);
+#else
     g_sprintf(con_port, "%d", 6200 + mod->display - PORT_OFFSET);
+#endif
     use_uds = 0;
 
     if (con_port[0] == '/')
