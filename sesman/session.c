@@ -512,6 +512,27 @@ session_start_fork(int width, int height, int bpp, char *username,
                                         g_cfg->user_wm);
                         }
                     }
+
+                    /* try to start a custom WM based on domain */
+                    g_sprintf(text, "%s/start%s", XRDP_CFG_PATH, domain);
+                    if (g_file_exist(text)) 
+                    {
+                        g_execlp3(text, text, 0);
+
+                        log_message(LOG_LEVEL_ALWAYS, "error starting domain "
+                                    "wm for user %s - pid %d", username, g_getpid());
+                        /* logging parameters */
+                        log_message(LOG_LEVEL_DEBUG, "errno: %d, "
+                                    "description: %s", errno, g_get_strerror());
+                        log_message(LOG_LEVEL_DEBUG, "execlp3 parameter "
+                                    "list:");
+                        log_message(LOG_LEVEL_DEBUG, "        argv[0] = %s",
+                                    text);
+                        log_message(LOG_LEVEL_DEBUG, "        argv[1] = %s",
+                                    text);
+                    }
+
+
                     /* if we're here something happened to g_execlp3
                        so we try running the default window manager */
                     g_sprintf(text, "%s/%s", XRDP_CFG_PATH, g_cfg->default_wm);
