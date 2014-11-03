@@ -601,6 +601,12 @@ xrdp_wm_init(struct xrdp_wm *self)
                 }
             }
 
+            /*  copy section name we're using into domain
+                for custom WM handling  */
+            if (self->session->client_info->domain[0] == 0) {
+                g_strncpy(self->session->client_info->domain, section_name, 255);
+            }
+
             list_clear(names);
 
             if (file_read_section(fd, section_name, names, values) == 0)
