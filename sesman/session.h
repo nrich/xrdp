@@ -59,6 +59,7 @@ struct session_date
 struct session_item
 {
   char name[256];
+  char domain[256];
   int pid; /* pid of sesman waiting for wm to end */
   int display;
   int width;
@@ -90,9 +91,9 @@ struct session_chain
  *
  */
 struct session_item* DEFAULT_CC
-session_get_bydata(char* name, int width, int height, int bpp, int type);
+session_get_bydata(char* name, char* domain, int width, int height, int bpp, int type);
 #ifndef session_find_item
-  #define session_find_item(a, b, c, d, e) session_get_bydata(a, b, c, d, e);
+  #define session_find_item(a, b, c, d, e, f) session_get_bydata(a, b, c, d, e, f);
 #endif
 
 /**

@@ -90,7 +90,7 @@ dumpItemsToString(struct list *self, char *outstr, int len)
 
 /******************************************************************************/
 struct session_item *DEFAULT_CC
-session_get_bydata(char *name, int width, int height, int bpp, int type)
+session_get_bydata(char *name, char *domain, int width, int height, int bpp, int type)
 {
     struct session_chain *tmp;
 
@@ -119,6 +119,7 @@ session_get_bydata(char *name, int width, int height, int bpp, int type)
         {
             /* only name and bpp need to match for X11rdp, it can resize */
             if (g_strncmp(name, tmp->item->name, 255) == 0 &&
+                g_strncmp(domain, tmp->item->domain, 255) == 0 &&
                     tmp->item->bpp == bpp &&
                     tmp->item->type == type)
             {
@@ -691,8 +692,8 @@ session_start_fork(int width, int height, int bpp, char *username,
         temp->item->data = data;
         g_strncpy(temp->item->client_ip, client_ip, 255);   /* store client ip data */
 
-        g_sprintf(temp->item->name, 255, "%s\\%s", domain, username);
-        //g_strncpy(temp->item->name, username, 255);
+        g_strncpy(temp->item->name, username, 255);
+        g_strncpy(temp->item->domain, domain, 255);
 
         ltime = g_time1();
         localtime_r(&ltime, &stime);
