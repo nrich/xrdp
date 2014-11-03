@@ -128,16 +128,19 @@ session_get_bydata(char *name, char *domain, int width, int height, int bpp, int
                 return tmp->item;
             }
         }
-
-        if (g_strncmp(name, tmp->item->name, 255) == 0 &&
-                tmp->item->width == width &&
-                tmp->item->height == height &&
-                tmp->item->bpp == bpp &&
-                tmp->item->type == type)
+        else 
         {
-            /*THREAD-FIX release chain lock */
-            lock_chain_release();
-            return tmp->item;
+            if (g_strncmp(name, tmp->item->name, 255) == 0 &&
+                g_strncmp(domain, tmp->item->domain, 255) == 0 &&
+                    tmp->item->width == width &&
+                    tmp->item->height == height &&
+                    tmp->item->bpp == bpp &&
+                    tmp->item->type == type)
+            {
+                /*THREAD-FIX release chain lock */
+                lock_chain_release();
+                return tmp->item;
+            }
         }
 
         tmp = tmp->next;
