@@ -690,7 +690,9 @@ session_start_fork(int width, int height, int bpp, char *username,
         temp->item->bpp = bpp;
         temp->item->data = data;
         g_strncpy(temp->item->client_ip, client_ip, 255);   /* store client ip data */
-        g_strncpy(temp->item->name, username, 255);
+
+        g_sprintf(temp->item->name, 255, "%s\\%s", domain, username);
+        //g_strncpy(temp->item->name, username, 255);
 
         ltime = g_time1();
         localtime_r(&ltime, &stime);
