@@ -51,6 +51,10 @@
 #define NX_SSH_TYPE_DSS 1
 #define NX_SSH_TYPE_RSA 2
 
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX    108
+#endif
+
 static const char nx_default_private_key[] = "-----BEGIN DSA PRIVATE KEY-----\n"
                 "MIIBuwIBAAKBgQCXv9AzQXjxvXWC1qu3CdEqskX9YomTfyG865gb4D02ZwWuRU/9\n"
                 "C3I9/bEWLdaWgJYXIcFJsMCIkmWjjeSZyTmeoypI1iLifTHUxn3b7WNWi8AzKcVF\n"
