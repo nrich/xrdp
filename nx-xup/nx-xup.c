@@ -260,11 +260,11 @@ int get_session_info(struct mod *v, char *sessionid, char *cookie) {
     return 0;
 }
 
-int get_canvas_display(struct mod *mod, char *display) {
+int get_canvas_display(struct mod *mod, char display[], size_t buffersize) {
 #ifdef EXTERNAL_X11RDP
-    sprintf(display, ":%d", atoi(mod->port) - 6200);
+    g_snprintf(display, buffersize-1, ":%d", atoi(mod->port) - 6200);
 #else
-    sprintf(display, ":%d", mod->display - PORT_OFFSET);
+    g_snprintf(display, buffersize-1, ":%d", mod->display - PORT_OFFSET);
 #endif
 
 
@@ -277,7 +277,7 @@ int send_disconnect(int nxdisplay) {
     memset(&sa, 0, sizeof(sa));
     sa.sun_family = AF_UNIX;
 
-    sprintf(sa.sun_path, "/tmp/xrdp_disconnect_display_%d", nxdisplay);
+    g_snprintf(sa.sun_path, UNIX_PATH_MAX-1, "/tmp/xrdp_disconnect_display_%d", nxdisplay);
     if (access(sa.sun_path, F_OK) == 0)
     {
         int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
@@ -301,9 +301,9 @@ int start_nxproxy(struct mod *mod, char *sessionid, char *cookie, uid_t uid) {
         char sessionstash[512];
         char display[32];
 
-        get_canvas_display(mod, display);
+        get_canvas_display(mod, display, sizeof display);
 
-        sprintf(sessionstash, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, cookie, sessionid, "127.0.0.1", mod->display);
+        g_snprintf(sessionstash, sizeof(sessionstash)-1, "nx,session=%s,cookie=%s,id=%s,shmem=1,shpix=1,connect=%s:%d", mod->username, cookie, sessionid, "127.0.0.1", mod->display);
         mod->server_msg(mod, sessionstash, 1);
 
         //setuid(uid);
@@ -338,8 +338,8 @@ int start_x11rdp(struct mod *mod, uid_t uid) {
 
             setuid(uid);
 
-            sprintf(geometry, "%dx%d", mod->width, mod->height);
-            get_canvas_display(mod, display);
+            g_snprintf(geometry, sizeof(geometry)-1, "%dx%d", mod->width, mod->height);
+            get_canvas_display(mod, display, sizeof display);
 
             execl("/usr/bin/X11rdp", "/usr/bin/X11rdp", display, "-geometry", geometry, "-depth", "24", "-bs", "-ac", "-nolisten", "tcp", NULL);
         } else {
@@ -363,9 +363,9 @@ int resize_nxproxy(struct mod *mod, uid_t uid) {
 
         //setuid(uid);
 
-        sprintf(width, "%d", mod->width);
-        sprintf(height, "%d", mod->height);
-        get_canvas_display(mod, display);
+        g_snprintf(width, sizeof(width)-1, "%d", mod->width);
+        g_snprintf(height, sizeof(height)-1, "%d", mod->height);
+        get_canvas_display(mod, display, sizeof display);
 
         execl("/usr/bin/xwit", "/usr/bin/xwit", "-display", display, "-all", "-resize", width, height, NULL);
     } else {
@@ -706,7 +706,7 @@ lib_mod_connect(struct mod *mod)
 
         mod->server_msg(mod, "No session found", 1);
 
-        sprintf(sessioncommand, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
+        g_snprintf(sessioncommand, 1023, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
         session_send_command(mod, sessioncommand);
         get_session_info(mod, sessionid, cookie);
 
@@ -730,8 +730,8 @@ lib_mod_connect(struct mod *mod)
         send_disconnect(mod->display-PORT_OFFSET);
 #endif
 
-        get_canvas_display(mod, display);
-        sprintf(geometry, "%dx%d", mod->width, mod->height);
+        get_canvas_display(mod, display, sizeof display);
+        g_snprintf(geometry, sizeof(geometry)-1, "%dx%d", mod->width, mod->height);
 
         if (ip[0] == '-') {
             /* no session */
@@ -748,7 +748,7 @@ lib_mod_connect(struct mod *mod)
             /* another remote session */
             char disconnectcommand[1024];
 
-            sprintf(disconnectcommand, "disconnect --sessionid=\"%s\"", sessiontoken);
+            g_snprintf(disconnectcommand, 1023, "disconnect --sessionid=\"%s\"", sessiontoken);
             session_send_command(mod, disconnectcommand);
             if (!get_expected_response(mod, 105)) {
                 mod->server_msg(mod, "Disconnect failed", 0);
@@ -763,7 +763,7 @@ lib_mod_connect(struct mod *mod)
         if (do_restore) {
             char sessioncommand[1024];
 
-            sprintf(sessioncommand, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, sessiontoken, mod->width, mod->height);
+            g_snprintf(sessioncommand, 1023, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, sessiontoken, mod->width, mod->height);
             session_send_command(mod, sessioncommand);
             get_session_info(mod, sessionid, cookie);
 
@@ -821,9 +821,9 @@ lib_mod_connect(struct mod *mod)
     make_stream(s);
 
 #ifdef EXTERNAL_X11RDP
-    g_sprintf(con_port, "%s", mod->port);
+    g_snprintf(con_port, 255, "%s", mod->port);
 #else
-    g_sprintf(con_port, "%d", 6200 + mod->display - PORT_OFFSET);
+    g_snprintf(con_port, 255, "%d", 6200 + mod->display - PORT_OFFSET);
 #endif
     use_uds = 0;
 
