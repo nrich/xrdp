@@ -611,7 +611,7 @@ lib_mod_connect(struct mod *mod)
         ssh_free(mod->session);
         return 1;
     } else {
-        mod->server_msg(mod, "Authed to SSH server", 1);
+        mod->server_msg(mod, "Authenticated to SSH server", 1);
     }
 
     mod->channel = ssh_channel_new(mod->session);
@@ -682,7 +682,7 @@ lib_mod_connect(struct mod *mod)
         mod->server_msg(mod, "Authentication failed", 0);
         return 1;
     } else {
-        mod->server_msg(mod, "Auth OK", 1);
+        mod->server_msg(mod, "Authentication successful", 1);
     }
 
 #ifdef FREENX
@@ -708,7 +708,7 @@ lib_mod_connect(struct mod *mod)
         pid_t x11rdp = 0;
         char sessioncommand[1024];
 
-        mod->server_msg(mod, "No session found", 1);
+        mod->server_msg(mod, "Creating new NX session", 0);
 
         g_snprintf(sessioncommand, 1023, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
         session_send_command(mod, sessioncommand);
@@ -767,6 +767,8 @@ lib_mod_connect(struct mod *mod)
         if (do_restore) {
             char sessioncommand[1024];
 
+            mod->server_msg(mod, "Resuming NX session", 0);
+
             g_snprintf(sessioncommand, 1023, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%dx24\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"modem\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, sessiontoken, mod->width, mod->height);
             session_send_command(mod, sessioncommand);
             get_session_info(mod, sessionid, cookie);
@@ -780,6 +782,8 @@ lib_mod_connect(struct mod *mod)
             if (!start_nxproxy(mod, sessionid, cookie, pwd.pw_uid)) {
                 return 1;
             }
+        } else {
+            mod->server_msg(mod, "Connecting to existing session", 0);
         }
     }
 
