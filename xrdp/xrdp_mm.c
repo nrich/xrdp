@@ -125,6 +125,7 @@ xrdp_mm_send_login(struct xrdp_mm *self)
     int xserverbpp;
     char *username;
     char *password;
+    char *domain;
     char *name;
     char *value;
 
@@ -132,6 +133,7 @@ xrdp_mm_send_login(struct xrdp_mm *self)
                     "please wait...");
     username = 0;
     password = 0;
+    domain = 0;
     self->code = 0;
     xserverbpp = 0;
     count = self->login_names->count;
@@ -148,6 +150,14 @@ xrdp_mm_send_login(struct xrdp_mm *self)
         else if (g_strcasecmp(name, "password") == 0)
         {
             password = value;
+        }
+        else if (g_strcasecmp(name, "name") == 0)
+        {
+            // Use the name of the section as the domain name
+            // this will only be used if the domain hasn't already
+            // been set by the client. Domain is required
+            // for session matching now.
+            domain = value;
         }
         else if (g_strcasecmp(name, "code") == 0)
         {
@@ -187,6 +197,13 @@ xrdp_mm_send_login(struct xrdp_mm *self)
     else
     {
         out_uint16_be(s, self->wm->screen->bpp);
+    }
+
+    // copy the domain (name of section)
+    // into the domain if not already set
+    if (self->wm->client_info->domain[0] ==0 )
+    {
+        g_strncpy(self->wm->client_info->domain, domain, 255);
     }
 
     /* send domain */
