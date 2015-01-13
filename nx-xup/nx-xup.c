@@ -710,7 +710,7 @@ lib_mod_connect(struct mod *mod)
 
         mod->server_msg(mod, "Creating new NX session", 0);
 
-        g_snprintf(sessioncommand, 1023, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24-render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%d\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"lan\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
+        g_snprintf(sessioncommand, 1023, "startsession --session=\"%s\" --screeninfo=\"%dx%dx24+render\" --type=\"unix-application\" --application=\"startxfce4\" --geometry=\"%dx%d\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"lan\" --encryption=\"0\" --render=\"1\" --backingstore=\"1\" --resize=\"1\"", mod->username, mod->width, mod->height, mod->width, mod->height);
         session_send_command(mod, sessioncommand);
         get_session_info(mod, sessionid, cookie);
 
@@ -769,7 +769,7 @@ lib_mod_connect(struct mod *mod)
 
             mod->server_msg(mod, "Resuming NX session", 0);
 
-            g_snprintf(sessioncommand, 1023, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%d\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"lan\" --encryption=\"0\" --render=\"0\" --backingstore=\"1\" --resize=\"1\"", mod->username, sessiontoken, mod->width, mod->height);
+            g_snprintf(sessioncommand, 1023, "restoresession --session=\"%s\" --id=\"%s\" --type=\"unix-application\" --app=\"startxfce4\" --geometry=\"%dx%d\" --client=\"linux\" --cache=\"16M\" --images=\"64M\" --link=\"lan\" --encryption=\"0\" --render=\"1\" --backingstore=\"1\" --resize=\"1\"", mod->username, sessiontoken, mod->width, mod->height);
             session_send_command(mod, sessioncommand);
             get_session_info(mod, sessionid, cookie);
 
