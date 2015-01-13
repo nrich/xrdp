@@ -169,7 +169,7 @@ static int get_session(struct mod *v, char *ip, char *sessiontoken) {
     output[0] = '\0';
 
     v->server_msg(v, "Enter get_session loop", 1);
-    while (get_response_line(v, 5, output)) {
+    while (get_response_line(v, 30, output)) {
         v->server_msg(v, "Doing get_session loop", 1);
         v->server_msg(v, output, 1);
 
@@ -217,7 +217,7 @@ int get_session_info(struct mod *v, char *sessionid, char *cookie) {
     output[0] = '\0';
 
     v->server_msg(v, "Enter get_session_info loop", 1);
-    while (get_response_line(v, 5, output)) {
+    while (get_response_line(v, 30, output)) {
         v->server_msg(v, "Doing get_session_info loop", 1);
         v->server_msg(v, output, 1);
 
