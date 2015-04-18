@@ -54,6 +54,11 @@ AC_ARG_ENABLE(nxxup, AS_HELP_STRING([--enable-nxxup],
               [nxxup=true], [nxxup=false])
 AM_CONDITIONAL(XRDP_NXXUP, [test x$nxxup = xtrue])
 
+AC_ARG_ENABLE(gopcnxxup, AS_HELP_STRING([--enable-gopcnxxup],
+              [Build gopcnxxup module (default: no)]),
+              [gopcnxxup=true], [gopcnxxup=false])
+AM_CONDITIONAL(XRDP_GOPCNXXUP, [test x$gopcnxxup = xtrue])
+
 AC_ARG_ENABLE(simplesound, AS_HELP_STRING([--enable-simplesound],
               [Build simple pulse audio interface (default: no)]),
               [simplesound=true], [simplesound=false])
@@ -128,6 +133,11 @@ then
     [AC_MSG_ERROR([please install libssh-dev or libssh-devel])])
 fi
 
+if ! test -z "$enable_gopcnxxup"
+then
+  AC_CHECK_HEADER([jansson.h], [],
+    [AC_MSG_ERROR([please install libjanson-dev or libjansson-devel])])
+fi
 
 # checking for fuse
 if ! test -z "$enable_fuse"
@@ -169,6 +179,7 @@ AC_CONFIG_FILES([Makefile
                  rdp/Makefile
                  nx-vnc/Makefile
                  nx-xup/Makefile
+                 gopcnx-xup/Makefile
                  libxrdp/Makefile
                  xup/Makefile
                  mc/Makefile

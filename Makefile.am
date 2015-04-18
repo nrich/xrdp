@@ -24,6 +24,11 @@ else
 XRDPNXXUPDIR = 
 endif
 
+if XRDP_GOPCNXXUP
+XRDPGOPCNXXUPDIR = gopcnx-xup
+else
+XRDPGOPCNXXUPDIR = 
+endif
 
 SUBDIRS = \
   common \
@@ -31,6 +36,7 @@ SUBDIRS = \
   rdp \
   $(XRDPNXVNCDIR) \
   $(XRDPNXXUPDIR) \
+  $(XRDPGOPCNXXUPDIR) \
   xup \
   mc \
   $(NEUTRINORDPDIR) \
