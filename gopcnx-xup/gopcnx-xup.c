@@ -36,6 +36,8 @@
 
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <arpa/inet.h>
+#include <unistd.h> 
 
 #include <pwd.h>
 
@@ -49,28 +51,7 @@ int get_canvas_display(struct mod *mod, char display[], size_t buffersize) {
     return 1;
 }
 
-int send_disconnect(int nxdisplay) {
-    struct sockaddr_un sa;
-
-    memset(&sa, 0, sizeof(sa));
-    sa.sun_family = AF_UNIX;
-
-    g_snprintf(sa.sun_path, UNIX_PATH_MAX-1, "/tmp/xrdp_disconnect_display_%d", nxdisplay);
-    if (access(sa.sun_path, F_OK) == 0)
-    {
-        int sck = socket(PF_UNIX, SOCK_DGRAM, 0);
-        size_t len = sizeof(sa);
-        sendto(sck, "sig", 4, 0, (struct sockaddr*)&sa, len);
-    }
-    else
-    {
-        log_message(LOG_LEVEL_INFO, "Failed to send disconnect to %s", sa.sun_path);
-        return 0;
-    }
-    return 1;
-}
-
-int start_nxproxy(struct mod *mod, char *cookie, int port, uid_t uid) {
+int start_nxproxy(struct mod *mod, const char *cookie, int port) {
     pid_t nxproxy = fork();
 
     if (nxproxy > 0) {
@@ -81,11 +62,9 @@ int start_nxproxy(struct mod *mod, char *cookie, int port, uid_t uid) {
 
         get_canvas_display(mod, display, sizeof display);
 
-        g_snprintf(sessionstash, sizeof(sessionstash)-1, "nx,session=gopc,cookie=%s,shmem=1,shpix=1,connect=%s:%d", cookie, "127.0.0.1", port);
+        g_snprintf(sessionstash, sizeof(sessionstash)-1, "nx,session=gopc,cookie=%s,shmem=1,shpix=1,connect=%s:%d", cookie, "127.0.0.1", port-4000);
 
         mod->server_msg(mod, sessionstash, 1);
-
-        //setuid(uid);
 
         setenv("DISPLAY", display, 1);
         execl("/usr/bin/nxproxy", "/usr/bin/nxproxy", "-S", sessionstash, NULL);
@@ -97,7 +76,7 @@ int start_nxproxy(struct mod *mod, char *cookie, int port, uid_t uid) {
     return 1;
 }
 
-int resize_nxproxy(struct mod *mod, uid_t uid) {
+int resize_nxproxy(struct mod *mod) {
     pid_t xwit = fork();
 
     if (xwit > 0) {
@@ -106,8 +85,6 @@ int resize_nxproxy(struct mod *mod, uid_t uid) {
         char display[32];
         char width[32];
         char height[32];
-
-        //setuid(uid);
 
         g_snprintf(width, sizeof(width)-1, "%d", mod->width);
         g_snprintf(height, sizeof(height)-1, "%d", mod->height);
@@ -272,9 +249,6 @@ lib_mod_connect(struct mod *mod)
     int send_error = 0;
 
     int rc = 0;
-    ssh_private_key privkey;
-    ssh_public_key pubkey;
-    ssh_string pubkeystr;
     unsigned int nbytes;
     char pidfile[128];
     char ip[16];
@@ -286,7 +260,7 @@ lib_mod_connect(struct mod *mod)
     struct passwd pwd;
     struct passwd *pwdresult;
     char pwdbuffer[16384];
-    char *message;
+    char message[256];
     char reply[256];
 
     int sock;
@@ -316,8 +290,10 @@ lib_mod_connect(struct mod *mod)
     request = json_object();
     json_object_set(request, "username", json_string(mod->username));
     json_object_set(request, "password", json_string(mod->password));
+    json_object_set(request, "ip", json_string("127.0.0.1"));
+    json_object_set(request, "link", json_string("lan"));
 
-    message = json_dumps(request, 0);
+    g_snprintf(message, sizeof(message)-1, "%s\n", json_dumps(request, 0));
     if (send(sock, message, strlen(message), 0) < 0) {
         mod->server_msg(mod, "Server request failed", 0);
         return 1;
@@ -329,9 +305,10 @@ lib_mod_connect(struct mod *mod)
     }
 
     response = json_loads(reply, 0, &js_error);
-
+        
     if (response == NULL) {
-
+        mod->server_msg(mod, "Decoding response failed", 0);
+        return 1;
     } else {
         json_t *nxsession = json_object_get(response, "session");
         json_t *err = json_object_get(response, "err");
@@ -344,6 +321,7 @@ lib_mod_connect(struct mod *mod)
             const char *cookie = json_string_value(json_object_get(nxsession, "cookie"));
             const char *host = json_string_value(json_object_get(nxsession, "host"));
             json_int_t port = json_integer_value(json_object_get(nxsession, "port"));            
+            int resume = json_boolean_value(json_object_get(nxsession, "resume"));            
 
             getpwnam_r(mod->username, &pwd, pwdbuffer, sizeof(pwdbuffer), &pwdresult);
             if (pwdresult == NULL) {
@@ -351,11 +329,14 @@ lib_mod_connect(struct mod *mod)
                 return 1;
             }
 
-            if (!start_nxproxy(mod, cookie, (int)port, pwd.pw_uid)) {
-                mod->server_msg(mod, "nxproxy failed to start", 0);
-                return 1;
+            if (resume) {
+                resize_nxproxy(mod);
+            } else {
+                if (!start_nxproxy(mod, cookie, (int)port)) {
+                    mod->server_msg(mod, "nxproxy failed to start", 0);
+                    return 1;
+                }
             }
-
         }
     }
 
