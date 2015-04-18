@@ -268,6 +268,7 @@ lib_mod_connect(struct mod *mod)
 
     json_t *request;
     json_t *response;
+    json_t *display;
     json_error_t js_error;
 
     mod->server_msg(mod, "GoPCNX started connection", 0);
@@ -292,8 +293,15 @@ lib_mod_connect(struct mod *mod)
     json_object_set(request, "password", json_string(mod->password));
     json_object_set(request, "ip", json_string("127.0.0.1"));
     json_object_set(request, "link", json_string("lan"));
+    display = json_object();
+    json_object_set(display, "width", json_integer(mod->width));
+    json_object_set(display, "height", json_integer(mod->height));
+    json_object_set(request, "display", display);
+    json_decref(display);
 
     g_snprintf(message, sizeof(message)-1, "%s\n", json_dumps(request, 0));
+    json_decref(request);
+
     if (send(sock, message, strlen(message), 0) < 0) {
         mod->server_msg(mod, "Server request failed", 0);
         return 1;
@@ -312,16 +320,18 @@ lib_mod_connect(struct mod *mod)
     } else {
         json_t *nxsession = json_object_get(response, "session");
         json_t *err = json_object_get(response, "err");
+        int resume = json_integer_value(json_object_get(response, "resume"));
 
         if (err) {
             mod->server_msg(mod, js_error.text, 0);
             return 1;
+        } else if (resume) {
+            resize_nxproxy(mod);
         } else {
             char sessionstash[512];
             const char *cookie = json_string_value(json_object_get(nxsession, "cookie"));
             const char *host = json_string_value(json_object_get(nxsession, "host"));
             json_int_t port = json_integer_value(json_object_get(nxsession, "port"));            
-            int resume = json_integer_value(json_object_get(nxsession, "resume"));            
 
             getpwnam_r(mod->username, &pwd, pwdbuffer, sizeof(pwdbuffer), &pwdresult);
             if (pwdresult == NULL) {
@@ -329,17 +339,16 @@ lib_mod_connect(struct mod *mod)
                 return 1;
             }
 
-            if (resume) {
-                resize_nxproxy(mod);
-            } else {
-                if (!start_nxproxy(mod, cookie, (int)port)) {
-                    mod->server_msg(mod, "nxproxy failed to start", 0);
-                    return 1;
-                }
+            if (!start_nxproxy(mod, cookie, (int)port)) {
+                mod->server_msg(mod, "nxproxy failed to start", 0);
+                return 1;
             }
+
+            json_decref(nxsession);
         }
     }
 
+    json_decref(response);
 
     LIB_DEBUG(mod, "in lib_mod_connect");
     /* clear screen */
