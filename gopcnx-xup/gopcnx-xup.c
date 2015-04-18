@@ -321,7 +321,7 @@ lib_mod_connect(struct mod *mod)
             const char *cookie = json_string_value(json_object_get(nxsession, "cookie"));
             const char *host = json_string_value(json_object_get(nxsession, "host"));
             json_int_t port = json_integer_value(json_object_get(nxsession, "port"));            
-            int resume = json_boolean_value(json_object_get(nxsession, "resume"));            
+            int resume = json_integer_value(json_object_get(nxsession, "resume"));            
 
             getpwnam_r(mod->username, &pwd, pwdbuffer, sizeof(pwdbuffer), &pwdresult);
             if (pwdresult == NULL) {
