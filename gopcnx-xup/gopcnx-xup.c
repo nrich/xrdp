@@ -320,7 +320,7 @@ lib_mod_connect(struct mod *mod)
     } else {
         json_t *nxsession = json_object_get(response, "session");
         json_t *err = json_object_get(response, "err");
-        int resume = json_integer_value(json_object_get(response, "resume"));
+        int resume = json_is_true(json_object_get(response, "resume"));
 
         if (err) {
             mod->server_msg(mod, js_error.text, 0);
