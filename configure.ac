@@ -136,7 +136,7 @@ fi
 if ! test -z "$enable_gopcnxxup"
 then
   AC_CHECK_HEADER([jansson.h], [],
-    [AC_MSG_ERROR([please install libjanson-dev or libjansson-devel])])
+    [AC_MSG_ERROR([please install libjansson-dev or libjansson-devel])])
 fi
 
 # checking for fuse
