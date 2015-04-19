@@ -323,7 +323,7 @@ lib_mod_connect(struct mod *mod)
         int resume = json_is_true(json_object_get(response, "resume"));
 
         if (err) {
-            mod->server_msg(mod, js_error.text, 0);
+            mod->server_msg(mod, json_string_value(err), 0);
             return 1;
         } else if (resume) {
             resize_nxproxy(mod);
