@@ -15,6 +15,18 @@
 #define pa__load_once module_xrdp_source_LTX_pa__load_once
 #define pa__get_n_used module_xrdp_source_LTX_pa__get_n_used
 
+#ifndef pa_bool_t
+#define pa_bool_t bool
+#endif
+
+#ifndef TRUE
+#define TRUE true
+#endif
+
+#ifndef FALSE
+#define FALSE false
+#endif
+
 int pa__init(pa_module*m);
 void pa__done(pa_module*m);
 int pa__get_n_used(pa_module*m);

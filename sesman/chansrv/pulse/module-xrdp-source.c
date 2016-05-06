@@ -271,7 +271,11 @@ static void thread_func(void *userdata) {
         }
 
         /* Hmm, nothing to do. Let's sleep */
+#ifdef PA_NEW_API
+        if ((ret = pa_rtpoll_run(u->rtpoll)) < 0)
+#else
         if ((ret = pa_rtpoll_run(u->rtpoll, TRUE)) < 0)
+#endif
             goto fail;
 
         if (ret == 0)
